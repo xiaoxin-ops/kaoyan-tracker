@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "研途: 启动应用（无调试）",
+      "type": "shell",
+      "command": "${workspaceFolder}\\start.bat",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "研途: 安装/更新依赖",
+      "type": "shell",
+      "command": "${workspaceFolder}/.runtime/python/python.exe",
+      "args": ["-m", "pip", "install", "-r", "requirements.txt"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

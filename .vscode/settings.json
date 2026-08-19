@@ -1,0 +1,21 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.runtime/python/python.exe",
+  "python.terminal.activateEnvironment": false,
+  "files.exclude": {
+    ".runtime": true,
+    "**/__pycache__": true
+  },
+  "search.exclude": {
+    ".runtime": true
+  },
+  "files.encoding": "utf8",
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.rulers": [100]
+  },
+  "[html]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  }
+}

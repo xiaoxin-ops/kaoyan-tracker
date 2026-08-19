@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>研途 · 考研学习进度追踪</title>
+<meta name="theme-color" content="#A3B18A">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+/* ============ 莫兰迪护眼配色 ============ */
+:root{
+  --bg:#F4F2EC;
+  --card:#FCFBF7;
+  --border:#E6E1D5;
+  --text:#4B4A44;
+  --muted:#8C8A80;
+  --sidebar:#E9E5DA;
+  --sidebar-active:#DCD7C9;
+  --sage:#A3B18A;
+  --sage-deep:#7E9166;
+  --blue:#8FA6B8;
+  --blue-deep:#6E87A0;
+  --danger:#B5837F;
+}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",system-ui,-apple-system,sans-serif;
+  letter-spacing:.2px;
+}
+/* ============ 布局 ============ */
+.app-shell{display:flex;min-height:100vh}
+.sidebar{
+  width:236px;flex-shrink:0;background:var(--sidebar);
+  padding:22px 16px;display:flex;flex-direction:column;gap:26px;
+  position:sticky;top:0;height:100vh;
+}
+.main{flex:1;min-width:0}
+.content{padding:28px clamp(16px,3vw,36px) 48px;max-width:1240px;margin:0 auto}
+.mobile-nav{display:none}
+@media (max-width:767.98px){
+  .sidebar{display:none}
+  .mobile-nav{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 16px;background:var(--sidebar);position:sticky;top:0;z-index:100;
+  }
+}
+/* ============ 侧边栏 ============ */
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px}
+.brand-mark{
+  width:42px;height:42px;border-radius:12px;background:var(--sage);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.25rem;font-weight:700;box-shadow:0 4px 12px rgba(126,145,102,.35);
+}
+.brand-title{font-weight:700;font-size:1.05rem}
+.brand-sub{font-size:.75rem;color:var(--muted)}
+.nav-item{
+  display:flex;align-items:center;gap:12px;width:100%;
+  padding:12px 16px;border:0;border-radius:12px;background:transparent;
+  color:var(--text);font-size:.95rem;text-align:left;
+  transition:all .18s ease;cursor:pointer;
+}
+.nav-item i{font-size:1.05rem}
+.nav-item:hover{background:rgba(255,255,255,.55)}
+.nav-item.active{
+  background:var(--sidebar-active);color:#55663F;font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(126,145,102,.25);
+}
+.mobile-nav .nav-item{width:auto;padding:8px 12px}
+.sidebar-foot{margin-top:auto;font-size:.72rem;color:var(--muted);line-height:1.7;padding:0 8px}
+/* ============ 页头 ============ */
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.page-title{margin:0;font-weight:700}
+.page-sub{color:var(--muted);font-size:.85rem;margin-top:4px}
+/* ============ 卡片 ============ */
+.card{border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 3px 14px rgba(75,74,68,.05)}
+.card-head{padding:14px 20px;border-bottom:1px solid var(--border);font-weight:600;font-size:.95rem}
+.card-body{padding:20px}
+.stat-card .card-body{padding:18px 20px}
+.stat-icon{
+  width:50px;height:50px;border-radius:14px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:1.35rem;
+}
+.icon-sage{background:#E3E8D8;color:var(--sage-deep)}
+.icon-blue{background:#DFE7ED;color:var(--blue-deep)}
+.icon-gold{background:#F0EAD6;color:#A2924F}
+.icon-mauve{background:#EAE3F0;color:#8A6FA8}
+.stat-label{color:var(--muted);font-size:.82rem}
+.stat-value{font-size:1.55rem;font-weight:700;margin-top:2px}
+.stat-value small{font-size:.9rem;font-weight:500;color:var(--muted)}
+/* ============ 进度条 ============ */
+.progress-soft{background:#EDE9DE;border-radius:99px;height:10px}
+.progress-soft .progress-bar{border-radius:99px;transition:width .5s ease}
+/* ============ 按钮 ============ */
+.btn{border-radius:10px}
+.btn-primary.btn-soft{background:var(--sage);border-color:var(--sage);color:#fff}
+.btn-primary.btn-soft:hover,.btn-primary.btn-soft:focus{background:var(--sage-deep);border-color:var(--sage-deep);color:#fff}
+.btn-danger.btn-soft{background:var(--danger);border-color:var(--danger)}
+.btn-danger.btn-soft:hover{background:#A06F6A;border-color:#A06F6A}
+.btn-outline-danger{color:var(--danger);border-color:#D9B9B5}
+.btn-outline-danger:hover{background:var(--danger);border-color:var(--danger)}
+.btn-outline-secondary{color:var(--muted);border-color:#D8D3C6}
+.btn-outline-secondary:hover{background:#E9E5DA;border-color:#D8D3C6;color:var(--text)}
+/* ============ 徽章 / 圆点 ============ */
+.badge-soft{background:#EFEBE1;color:var(--text);font-weight:500;padding:.4em .7em;border-radius:8px}
+.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+/* ============ 筛选栏 ============ */
+.filter-bar{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.filter-bar .field{min-width:170px}
+.filter-bar .field label{font-size:.78rem;color:var(--muted);margin-bottom:4px}
+.filter-actions{display:flex;gap:8px}
+@media (max-width:575.98px){.filter-bar .field{width:100%}}
+/* ============ 表格 ============ */
+.table thead th{
+  font-size:.8rem;color:var(--muted);font-weight:600;white-space:nowrap;
+  border-bottom:1px solid var(--border);background:transparent;
+}
+.table tbody td{border-color:var(--border);vertical-align:middle}
+.table-hover tbody tr:hover{background:#F6F3EB}
+.summary-cell{max-width:340px;word-break:break-word}
+/* ============ 表单 ============ */
+.form-control,.form-select{border-color:#DDD8CA;border-radius:10px}
+.form-control:focus,.form-select:focus{border-color:var(--sage);box-shadow:0 0 0 .2rem rgba(163,177,138,.25)}
+.form-range::-webkit-slider-thumb{background:var(--sage-deep)}
+.form-range::-moz-range-thumb{background:var(--sage-deep)}
+.hint{color:var(--muted)}
+/* ============ 图表 ============ */
+.chart-box{position:relative;height:300px}
+/* ============ 弹窗 ============ */
+.morandi-modal{border:1px solid var(--border);border-radius:18px}
+.confirm-icon{
+  width:52px;height:52px;border-radius:50%;background:#F3E3E0;color:var(--danger);
+  font-size:1.5rem;display:inline-flex;align-items:center;justify-content:center;
+}
+.list-group-item{border-color:var(--border);background:transparent}
+/* ============ 日记 ============ */
+.min-width-0{min-width:0}
+.diary-card .card-body{padding:16px 20px}
+.diary-mood{font-size:1.45rem;line-height:1}
+.diary-snippet{
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden;white-space:pre-wrap;word-break:break-word;font-size:.9rem;
+}
+.mood-picker{display:flex;gap:10px;flex-wrap:wrap}
+.mood-item{
+  border:1px solid var(--border);border-radius:12px;background:#F7F4EC;
+  padding:8px 14px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:2px;font-size:.78rem;color:var(--muted);
+  transition:all .15s ease;user-select:none;
+}
+.mood-item .mood-emoji{font-size:1.35rem;line-height:1.2}
+.mood-item.selected{border-color:var(--sage);background:#E3E8D8;color:#55663F;box-shadow:0 2px 8px rgba(126,145,102,.2)}
+/* ============ Toast ============ */
+.toast-ok{background-color:var(--sage-deep);color:#fff}
+.toast-err{background-color:var(--danger);color:#fff}
+/* ============ 视图切换 ============ */
+.view{display:none}
+.view.active{display:block;animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ==================== 侧边栏（桌面端） ==================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">研</span>
+      <div>
+        <div class="brand-title">研途追踪</div>
+        <div class="brand-sub">考研学习进度</div>
+      </div>
+    </div>
+    <nav class="nav flex-column gap-1">
+      <button type="button" class="nav-item active" data-view="dashboard"><i class="bi bi-speedometer2"></i><span>仪表盘</span></button>
+      <button type="button" class="nav-item" data-view="records"><i class="bi bi-journal-text"></i><span>学习记录</span></button>
+      <button type="button" class="nav-item" data-view="diary"><i class="bi bi-journal-bookmark"></i><span>学习日记</span></button>
+      <button type="button" class="nav-item" data-view="subjects"><i class="bi bi-collection"></i><span>科目管理</span></button>
+    </nav>
+    <div class="sidebar-foot">Flask · SQLite<br>Bootstrap 5 · Chart.js</div>
+  </aside>
+
+  <div class="main">
+    <!-- ==================== 顶部导航（移动端） ==================== -->
+    <nav class="mobile-nav">
+      <span class="brand-title">研途追踪</span>
+      <div class="d-flex gap-1">
+        <button type="button" class="nav-item active" data-view="dashboard"><i class="bi bi-speedometer2"></i></button>
+        <button type="button" class="nav-item" data-view="records"><i class="bi bi-journal-text"></i></button>
+        <button type="button" class="nav-item" data-view="diary"><i class="bi bi-journal-bookmark"></i></button>
+        <button type="button" class="nav-item" data-view="subjects"><i class="bi bi-collection"></i></button>
+      </div>
+    </nav>
+
+    <main class="content">
+
+      <!-- ==================== 仪表盘 ==================== -->
+      <section id="view-dashboard" class="view active">
+        <div class="page-head">
+          <div>
+            <h4 class="page-title">仪表盘</h4>
+            <div class="page-sub" id="today-text"></div>
+          </div>
+          <button type="button" class="btn btn-primary btn-soft" onclick="loadDashboard()">
+            <i class="bi bi-arrow-clockwise me-1"></i>刷新
+          </button>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-6 col-xl-3">
+            <div class="card stat-card h-100">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon icon-sage"><i class="bi bi-calendar2-check"></i></div>
+                <div>
+                  <div class="stat-label">总学习天数</div>
+                  <div class="stat-value"><span id="stat-days">0</span><small> 天</small></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <div class="card stat-card h-100">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon icon-blue"><i class="bi bi-clock-history"></i></div>
+                <div>
+                  <div class="stat-label">总学习时长</div>
+                  <div class="stat-value"><span id="stat-total">0 分钟</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <div class="card stat-card h-100">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon icon-gold"><i class="bi bi-sun"></i></div>
+                <div>
+                  <div class="stat-label">今日学习</div>
+                  <div class="stat-value"><span id="stat-today">0 分钟</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <div class="card stat-card h-100">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="stat-icon icon-mauve"><i class="bi bi-journal-heart"></i></div>
+                <div>
+                  <div class="stat-label">日记连续天数</div>
+                  <div class="stat-value"><span id="stat-streak">0</span><small> 天</small></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="card h-100">
+              <div class="card-head">📚 各科掌握度</div>
+              <div class="card-body" id="mastery-list"></div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="card h-100">
+              <div class="card-head">📈 近 7 天学习时长趋势</div>
+              <div class="card-body">
+                <div class="chart-box"><canvas id="trend-chart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 学习记录 ==================== -->
+      <section id="view-records" class="view">
+        <div class="page-head">
+          <div>
+            <h4 class="page-title">学习记录</h4>
+            <div class="page-sub">按日期与科目筛选，管理每天的打卡记录</div>
+          </div>
+          <button type="button" class="btn btn-primary btn-soft" onclick="openRecordModal()">
+            <i class="bi bi-plus-lg me-1"></i>新增记录
+          </button>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-body filter-bar">
+            <div class="field">
+              <label class="d-block">日期</label>
+              <input type="date" class="form-control" id="filter-date">
+            </div>
+            <div class="field">
+              <label class="d-block">科目</label>
+              <select class="form-select" id="filter-subject">
+                <option value="">全部科目</option>
+              </select>
+            </div>
+            <div class="filter-actions">
+              <button type="button" class="btn btn-primary btn-soft" onclick="loadRecords()">
+                <i class="bi bi-search me-1"></i>查询
+              </button>
+              <button type="button" class="btn btn-outline-secondary" onclick="resetFilters()">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>重置
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table align-middle table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>日期</th><th>科目</th><th>时长</th><th>掌握度</th><th>内容摘要</th>
+                  <th class="text-end">操作</th>
+                </tr>
+              </thead>
+              <tbody id="records-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 学习日记 ==================== -->
+      <section id="view-diary" class="view">
+        <div class="page-head">
+          <div>
+            <h4 class="page-title">学习日记</h4>
+            <div class="page-sub">一天一篇，记录心情与收获，见证坚持</div>
+          </div>
+          <button type="button" class="btn btn-primary btn-soft" onclick="openDiaryModal()">
+            <i class="bi bi-plus-lg me-1"></i>写日记
+          </button>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-body filter-bar">
+            <div class="field">
+              <label class="d-block">月份</label>
+              <input type="month" class="form-control" id="diary-month">
+            </div>
+            <div class="field">
+              <label class="d-block">关键词</label>
+              <input type="text" class="form-control" id="diary-keyword" placeholder="搜索标题或内容">
+            </div>
+            <div class="filter-actions">
+              <button type="button" class="btn btn-primary btn-soft" onclick="loadDiaries()">
+                <i class="bi bi-search me-1"></i>查询
+              </button>
+              <button type="button" class="btn btn-outline-secondary" onclick="resetDiaryFilters()">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>重置
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="diary-list"></div>
+      </section>
+
+      <!-- ==================== 科目管理 ==================== -->
+      <section id="view-subjects" class="view">
+        <div class="page-head">
+          <div>
+            <h4 class="page-title">科目管理</h4>
+            <div class="page-sub">自定义添加 / 删除考研科目</div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="card mb-3">
+              <div class="card-head">➕ 添加科目</div>
+              <div class="card-body">
+                <div class="input-group">
+                  <input type="text" class="form-control" id="new-subject-name"
+                         placeholder="如：计算机综合、日语…" maxlength="50">
+                  <button type="button" class="btn btn-primary btn-soft" onclick="addSubject()">添加</button>
+                </div>
+                <div class="hint mt-2 small">默认已内置 政治 / 英语 / 数学 / 专业课，可按需增删。</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head">⚠️ 提示</div>
+              <div class="card-body hint small">
+                删除科目会一并删除该科目下的全部学习记录，且不可恢复，请谨慎操作。
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="card">
+              <div class="card-head">科目列表</div>
+              <ul class="list-group list-group-flush" id="subjects-list"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ==================== 新增 / 编辑记录弹窗 ==================== -->
+<div class="modal fade" id="recordModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content morandi-modal">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title" id="modal-title">新增学习记录</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <form id="record-form" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="record-id">
+          <div class="mb-3">
+            <label class="form-label">📅 日期</label>
+            <input type="date" class="form-control" id="record-date" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">📚 科目</label>
+            <select class="form-select" id="record-subject" required></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">⏱ 学习时长（分钟）</label>
+            <input type="number" class="form-control" id="record-minutes" min="1" max="1440" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label d-flex justify-content-between w-100">
+              <span>🎯 掌握度</span>
+              <span class="text-muted" id="mastery-value">50%</span>
+            </label>
+            <input type="range" class="form-range" id="record-mastery" min="0" max="100" step="5" value="50">
+          </div>
+          <div class="mb-1">
+            <label class="form-label">📝 内容摘要</label>
+            <textarea class="form-control" id="record-summary" rows="3"
+                      placeholder="今天学了什么？如：刷了 2010-2015 年英语阅读真题…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary btn-soft"><i class="bi bi-check2 me-1"></i>保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 写 / 编辑日记弹窗 ==================== -->
+<div class="modal fade" id="diaryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content morandi-modal">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title" id="diary-modal-title">写日记</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <form id="diary-form" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="diary-id">
+          <input type="hidden" id="diary-mood" value="">
+          <div class="mb-3">
+            <label class="form-label">📅 日期</label>
+            <input type="date" class="form-control" id="diary-date" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">😊 今日心情</label>
+            <div class="mood-picker" id="mood-picker"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">🏷 标题（可选）</label>
+            <input type="text" class="form-control" id="diary-title" maxlength="100"
+                   placeholder="给今天的学习一个小结">
+          </div>
+          <div class="mb-1">
+            <label class="form-label">📝 内容</label>
+            <textarea class="form-control" id="diary-content" rows="6" required
+                      placeholder="今天学了什么？有什么感悟、困惑，或者想对自己说的话…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary btn-soft"><i class="bi bi-check2 me-1"></i>保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 删除确认弹窗 ==================== -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content morandi-modal">
+      <div class="modal-body text-center pt-4">
+        <div class="confirm-icon"><i class="bi bi-exclamation-triangle"></i></div>
+        <p class="mt-3 mb-4 px-2" id="confirm-message"></p>
+        <div class="d-flex gap-2 justify-content-center pb-2">
+          <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-danger btn-soft px-4" id="btn-confirm-ok">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-box"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+'use strict';
+
+/* ==================== 全局状态 ==================== */
+let trendChart = null;
+let recordsCache = [];
+let subjectCache = [];
+let diariesCache = [];
+let confirmCallback = null;
+
+const $ = (id) => document.getElementById(id);
+const PALETTE = ['#A3B18A', '#8FA6B8', '#C9A9A6', '#CBBF8B', '#B5A7C4', '#9CC0B0', '#D4A373', '#A8B8C8'];
+const color = (i) => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
+
+/* ==================== 心情选项 ==================== */
+const MOODS = [
+  { key: 'happy', icon: '😄', label: '开心' },
+  { key: 'calm', icon: '😌', label: '平静' },
+  { key: 'tired', icon: '😪', label: '疲惫' },
+  { key: 'anxious', icon: '😣', label: '焦虑' },
+  { key: 'motivated', icon: '🔥', label: '动力满满' },
+];
+const moodByKey = (key) => MOODS.find((m) => m.key === key) || null;
+const moodIcon = (key) => { const m = moodByKey(key); return m ? m.icon : '📖'; };
+
+/* ==================== 工具函数 ==================== */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function fmtDuration(min) {
+  min = Number(min) || 0;
+  if (!min) return '0 分钟';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? (h + ' 小时 ' + m + ' 分') : (m + ' 分钟');
+}
+
+function todayText() {
+  const n = new Date();
+  const w = ['日', '一', '二', '三', '四', '五', '六'][n.getDay()];
+  return n.getFullYear() + ' 年 ' + (n.getMonth() + 1) + ' 月 ' + n.getDate() + ' 日 · 星期' + w;
+}
+
+function todayStr() {
+  const n = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  return n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate());
+}
+
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
+  if (!res.ok) throw new Error((data && data.error) || ('请求失败 (' + res.status + ')'));
+  return data;
+}
+
+function toast(message, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast align-items-center border-0 ' + (type === 'error' ? 'toast-err' : 'toast-ok');
+  el.innerHTML =
+    '<div class="d-flex"><div class="toast-body">' + esc(message) + '</div>' +
+    '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+  $('toast-box').appendChild(el);
+  const t = new bootstrap.Toast(el, { delay: 2500 });
+  t.show();
+  el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+
+function askConfirm(message, onOk) {
+  $('confirm-message').textContent = message;
+  confirmCallback = onOk;
+  bootstrap.Modal.getOrCreateInstance($('confirmModal')).show();
+}
+
+/* ==================== 视图切换 ==================== */
+function switchView(name) {
+  document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+  document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+  $('view-' + name).classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'records') loadRecords();
+  if (name === 'diary') loadDiaries();
+  if (name === 'subjects') loadSubjects();
+}
+
+/* ==================== 仪表盘 ==================== */
+async function loadDashboard() {
+  try {
+    const d = await api('/api/dashboard');
+    $('stat-days').textContent = d.total_days;
+    $('stat-total').textContent = fmtDuration(d.total_minutes);
+    $('stat-today').textContent = fmtDuration(d.today_minutes);
+    $('stat-streak').textContent = d.diary_streak;
+
+    const list = $('mastery-list');
+    if (!d.subjects.length) {
+      list.innerHTML = '<div class="text-center text-muted py-5">暂无科目，请先到「科目管理」添加</div>';
+    } else {
+      list.innerHTML = d.subjects.map((s, i) => {
+        const c = color(i);
+        return (
+          '<div class="mb-3">' +
+            '<div class="d-flex justify-content-between mb-1">' +
+              '<span class="fw-medium">' + esc(s.name) + '</span>' +
+              '<span class="text-muted small">' + s.mastery + '%</span>' +
+            '</div>' +
+            '<div class="progress progress-soft">' +
+              '<div class="progress-bar" style="width:' + s.mastery + '%;background:' + c + '"></div>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+    renderTrend(d.trend);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function renderTrend(trend) {
+  if (trendChart) { trendChart.destroy(); trendChart = null; }
+  const ctx = $('trend-chart').getContext('2d');
+  trendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: trend.map((d) => d.label),
+      datasets: [{
+        label: '学习时长（分钟）',
+        data: trend.map((d) => d.minutes),
+        backgroundColor: 'rgba(143,166,184,0.72)',
+        hoverBackgroundColor: '#8FA6B8',
+        borderRadius: 8,
+        maxBarThickness: 42,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#4B4A44',
+          titleColor: '#F4F2EC',
+          bodyColor: '#F4F2EC',
+          padding: 12,
+          cornerRadius: 8,
+          displayColors: false,
+          callbacks: { label: (c) => ' ' + c.parsed.y + ' 分钟' },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#8C8A80' } },
+        y: {
+          beginAtZero: true,
+          grid: { color: '#E9E5DA' },
+          ticks: { color: '#8C8A80', precision: 0 },
+          title: { display: true, text: '分钟', color: '#8C8A80' },
+        },
+      },
+    },
+  });
+}
+
+/* ==================== 学习记录 ==================== */
+async function loadRecords() {
+  try {
+    const params = new URLSearchParams();
+    if ($('filter-date').value) params.set('date', $('filter-date').value);
+    if ($('filter-subject').value) params.set('subject_id', $('filter-subject').value);
+    const rows = await api('/api/records?' + params.toString());
+    recordsCache = rows;
+
+    const tbody = $('records-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">暂无记录，点击右上角「新增记录」开始打卡吧</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((r) => {
+      const idx = subjectCache.findIndex((x) => x.id === r.subject_id);
+      const c = color(idx);
+      return (
+        '<tr>' +
+          '<td class="text-nowrap">' + esc(r.date) + '</td>' +
+          '<td><span class="badge badge-soft" style="color:' + c + '">' + esc(r.subject) + '</span></td>' +
+          '<td class="text-nowrap">' + r.minutes + ' 分钟</td>' +
+          '<td style="min-width:130px">' +
+            '<div class="d-flex align-items-center gap-2">' +
+              '<div class="progress progress-soft flex-grow-1" style="height:6px">' +
+                '<div class="progress-bar" style="width:' + r.mastery + '%;background:' + c + '"></div>' +
+              '</div>' +
+              '<span class="small text-muted" style="min-width:34px">' + r.mastery + '%</span>' +
+            '</div>' +
+          '</td>' +
+          '<td class="summary-cell">' + (esc(r.summary) || '<span class="text-muted">—</span>') + '</td>' +
+          '<td class="text-nowrap text-end">' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary me-1" title="编辑" onclick="editRecord(' + r.id + ')">' +
+              '<i class="bi bi-pencil"></i></button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger" title="删除" onclick="removeRecord(' + r.id + ')">' +
+              '<i class="bi bi-trash3"></i></button>' +
+          '</td>' +
+        '</tr>'
+      );
+    }).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function resetFilters() {
+  $('filter-date').value = '';
+  $('filter-subject').value = '';
+  loadRecords();
+}
+
+function openRecordModal(record = null) {
+  $('record-form').reset();
+  $('record-id').value = '';
+  $('modal-title').textContent = '新增学习记录';
+  $('record-date').value = todayStr();
+  $('record-minutes').value = 60;
+  $('record-mastery').value = 50;
+  $('mastery-value').textContent = '50%';
+  $('record-subject').innerHTML = subjectCache
+    .map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+
+  if (record) {
+    $('modal-title').textContent = '编辑学习记录';
+    $('record-id').value = record.id;
+    $('record-date').value = record.date;
+    $('record-subject').value = record.subject_id;
+    $('record-minutes').value = record.minutes;
+    $('record-mastery').value = record.mastery;
+    $('mastery-value').textContent = record.mastery + '%';
+    $('record-summary').value = record.summary;
+  }
+  bootstrap.Modal.getOrCreateInstance($('recordModal')).show();
+}
+
+async function saveRecord() {
+  const form = $('record-form');
+  if (!form.checkValidity()) { form.reportValidity(); return; }
+  const payload = {
+    date: $('record-date').value,
+    subject_id: Number($('record-subject').value),
+    minutes: Number($('record-minutes').value),
+    mastery: Number($('record-mastery').value),
+    summary: $('record-summary').value.trim(),
+  };
+  const id = $('record-id').value;
+  try {
+    if (id) {
+      await api('/api/records/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      await api('/api/records', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    bootstrap.Modal.getOrCreateInstance($('recordModal')).hide();
+    toast(id ? '记录已更新' : '打卡成功，继续加油！');
+    await refreshAll();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function editRecord(id) {
+  const r = recordsCache.find((x) => x.id === id);
+  if (r) openRecordModal(r);
+}
+
+function removeRecord(id) {
+  const r = recordsCache.find((x) => x.id === id);
+  askConfirm('确定删除 ' + (r ? r.date : '') + ' 的学习记录吗？此操作不可恢复。', async () => {
+    try {
+      await api('/api/records/' + id, { method: 'DELETE' });
+      toast('记录已删除');
+      await refreshAll();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  });
+}
+
+/* ==================== 科目管理 ==================== */
+async function loadSubjects() {
+  try {
+    const subs = await api('/api/subjects');
+    subjectCache = subs;
+
+    // 记录页筛选下拉
+    const sel = $('filter-subject');
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">全部科目</option>' +
+      subs.map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+    sel.value = keep;
+
+    // 科目列表
+    const ul = $('subjects-list');
+    if (!subs.length) {
+      ul.innerHTML = '<li class="list-group-item text-center text-muted py-4">还没有科目，先在左侧添加一个吧</li>';
+    } else {
+      ul.innerHTML = subs.map((s, i) => (
+        '<li class="list-group-item d-flex justify-content-between align-items-center gap-3 py-3">' +
+          '<div class="d-flex align-items-center gap-3">' +
+            '<span class="dot" style="background:' + color(i) + '"></span>' +
+            '<span class="fw-medium">' + esc(s.name) + '</span>' +
+            '<span class="badge badge-soft">' + s.record_count + ' 条记录</span>' +
+          '</div>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="removeSubject(' + s.id + ')">' +
+            '<i class="bi bi-trash3 me-1"></i>删除</button>' +
+        '</li>'
+      )).join('');
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function addSubject() {
+  const input = $('new-subject-name');
+  const name = input.value.trim();
+  if (!name) { toast('请输入科目名称', 'error'); input.focus(); return; }
+  try {
+    await api('/api/subjects', { method: 'POST', body: JSON.stringify({ name: name }) });
+    input.value = '';
+    toast('科目「' + name + '」已添加');
+    await refreshAll();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function removeSubject(id) {
+  const s = subjectCache.find((x) => x.id === id);
+  const name = s ? s.name : '该科目';
+  askConfirm('确定删除科目「' + name + '」吗？其下全部学习记录将一并删除。', async () => {
+    try {
+      await api('/api/subjects/' + id, { method: 'DELETE' });
+      toast('科目「' + name + '」已删除');
+      await refreshAll();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  });
+}
+
+/* ==================== 学习日记 ==================== */
+function weekdayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+}
+
+async function loadDiaries() {
+  try {
+    const params = new URLSearchParams();
+    if ($('diary-month').value) params.set('month', $('diary-month').value);
+    if ($('diary-keyword').value.trim()) params.set('keyword', $('diary-keyword').value.trim());
+    const rows = await api('/api/diaries?' + params.toString());
+    diariesCache = rows;
+
+    const box = $('diary-list');
+    if (!rows.length) {
+      box.innerHTML = '<div class="card"><div class="card-body text-center text-muted py-5">📖 还没有日记，写下第一篇吧 —— 记录心情，见证坚持</div></div>';
+      return;
+    }
+    box.innerHTML = rows.map((d) => (
+      '<div class="card diary-card mb-3">' +
+        '<div class="card-body d-flex justify-content-between align-items-start gap-3">' +
+          '<div class="min-width-0">' +
+            '<div class="d-flex align-items-center gap-2 mb-1 flex-wrap">' +
+              '<span class="diary-mood">' + moodIcon(d.mood) + '</span>' +
+              '<span class="fw-medium">' + (esc(d.title) || '无标题') + '</span>' +
+              '<span class="badge badge-soft">' + esc(d.date) + ' 周' + weekdayOf(d.date) + '</span>' +
+            '</div>' +
+            '<div class="diary-snippet text-muted">' + esc(d.content) + '</div>' +
+          '</div>' +
+          '<div class="text-nowrap flex-shrink-0">' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary me-1" title="编辑" onclick="editDiary(' + d.id + ')">' +
+              '<i class="bi bi-pencil"></i></button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger" title="删除" onclick="removeDiary(' + d.id + ')">' +
+              '<i class="bi bi-trash3"></i></button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    )).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function resetDiaryFilters() {
+  $('diary-month').value = '';
+  $('diary-keyword').value = '';
+  loadDiaries();
+}
+
+function renderMoodPicker(selectedKey) {
+  const box = $('mood-picker');
+  box.innerHTML = MOODS.map((m) => (
+    '<div class="mood-item' + (m.key === selectedKey ? ' selected' : '') + '" data-mood="' + m.key + '">' +
+      '<span class="mood-emoji">' + m.icon + '</span>' +
+      '<span>' + m.label + '</span>' +
+    '</div>'
+  )).join('');
+  box.querySelectorAll('.mood-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      box.querySelectorAll('.mood-item').forEach((x) => x.classList.remove('selected'));
+      item.classList.add('selected');
+      $('diary-mood').value = item.dataset.mood;
+    });
+  });
+}
+
+function openDiaryModal(entry = null) {
+  $('diary-form').reset();
+  $('diary-id').value = '';
+  $('diary-modal-title').textContent = '写日记';
+  $('diary-date').value = todayStr();
+  $('diary-title').value = '';
+  $('diary-content').value = '';
+  $('diary-mood').value = 'calm';
+  renderMoodPicker('calm');
+
+  if (entry) {
+    $('diary-modal-title').textContent = '编辑日记';
+    $('diary-id').value = entry.id;
+    $('diary-date').value = entry.date;
+    $('diary-title').value = entry.title;
+    $('diary-content').value = entry.content;
+    $('diary-mood').value = entry.mood || '';
+    renderMoodPicker(entry.mood || '');
+  }
+  bootstrap.Modal.getOrCreateInstance($('diaryModal')).show();
+}
+
+async function saveDiary() {
+  const form = $('diary-form');
+  if (!form.checkValidity()) { form.reportValidity(); return; }
+  const payload = {
+    date: $('diary-date').value,
+    title: $('diary-title').value.trim(),
+    content: $('diary-content').value.trim(),
+    mood: $('diary-mood').value,
+  };
+  const id = $('diary-id').value;
+  try {
+    if (id) {
+      await api('/api/diaries/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+      toast('日记已更新');
+    } else {
+      const res = await api('/api/diaries', { method: 'POST', body: JSON.stringify(payload) });
+      toast(res.created ? '日记已保存' : '该日期已有日记，已覆盖更新');
+    }
+    bootstrap.Modal.getOrCreateInstance($('diaryModal')).hide();
+    await refreshAll();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function editDiary(id) {
+  const d = diariesCache.find((x) => x.id === id);
+  if (d) openDiaryModal(d);
+}
+
+function removeDiary(id) {
+  const d = diariesCache.find((x) => x.id === id);
+  askConfirm('确定删除 ' + (d ? d.date : '') + ' 的日记吗？此操作不可恢复。', async () => {
+    try {
+      await api('/api/diaries/' + id, { method: 'DELETE' });
+      toast('日记已删除');
+      await refreshAll();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  });
+}
+
+/* ==================== 统一刷新 ==================== */
+async function refreshAll() {
+  await loadSubjects();
+  await loadRecords();
+  await loadDiaries();
+  await loadDashboard();
+}
+
+/* ==================== 初始化 ==================== */
+(async function init() {
+  $('today-text').textContent = todayText();
+
+  document.querySelectorAll('[data-view]').forEach((btn) => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  $('record-form').addEventListener('submit', (e) => { e.preventDefault(); saveRecord(); });
+  $('diary-form').addEventListener('submit', (e) => { e.preventDefault(); saveDiary(); });
+  $('record-mastery').addEventListener('input', (e) => {
+    $('mastery-value').textContent = e.target.value + '%';
+  });
+  $('btn-confirm-ok').addEventListener('click', () => {
+    const cb = confirmCallback;
+    confirmCallback = null;
+    if (cb) cb();
+    bootstrap.Modal.getOrCreateInstance($('confirmModal')).hide();
+  });
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  await refreshAll();
+})();
+</script>
+</body>
+</html>

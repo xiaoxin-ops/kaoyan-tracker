@@ -1,0 +1,15 @@
+# ===== 本地运行环境（体积大，切勿上传） =====
+.runtime/
+
+# ===== SQLite 数据库（本地数据不上传，服务端首次启动自动创建） =====
+study.db
+instance/
+*.db-journal
+
+# ===== Python 缓存 =====
+__pycache__/
+*.py[cod]
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db

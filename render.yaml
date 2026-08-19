@@ -1,0 +1,21 @@
+# Render Blueprint 自动化部署配置
+# 在 Render 控制台 New -> Blueprint 连接本仓库即可一键创建 Web Service；
+# 若手动创建 Web Service，请按本文件中的命令填写。
+services:
+  - type: web
+    name: yantu-tracker
+    runtime: python
+    plan: free
+    region: singapore          # 新加坡节点，国内访问延迟较低
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /
+    autoDeploy: true           # GitHub 有 push 时自动部署
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true    # Render 自动生成随机密钥
+      - key: DATABASE_PATH
+        value: instance/data.db
+        # 提示：免费实例的文件系统在重新部署时会被重置（数据丢失）。
+        # 如需数据永久保存，请在 Dashboard 为该服务挂载持久磁盘（Render Disk，
+        # 挂载路径 /var/data），并把本值改为 /var/data/data.db

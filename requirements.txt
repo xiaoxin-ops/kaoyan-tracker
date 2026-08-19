@@ -1,0 +1,8 @@
+# ===== 考研学习进度追踪 · 依赖清单 =====
+# 说明：sqlite3 是 Python 标准库（内置模块），无需也无法通过 pip 安装，
+#       Flask-SQLAlchemy 会自动使用它操作 SQLite 数据库。
+flask>=3.0.0
+flask-sqlalchemy>=3.1.1
+# gunicorn 为 WSGI 生产服务器，仅用于 Render/Linux 部署；
+# 借助 pip 环境标记，Windows 本地安装时会自动跳过本行（本地开发用 python app.py 即可）
+gunicorn>=21.2.0; sys_platform != "win32"
