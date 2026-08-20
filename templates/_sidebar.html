@@ -4,7 +4,7 @@
     <span class="brand-mark">研</span>
     <div>
       <div class="brand-title">研途追踪</div>
-      <div class="brand-sub">考研学习进度</div>
+      <div class="brand-sub">{% if current_user.is_authenticated %}{{ current_user.username }}{% else %}考研学习进度{% endif %}</div>
     </div>
   </div>
   <nav class="nav flex-column gap-1">
@@ -14,7 +14,7 @@
     <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i><span>科目管理</span></a>
     <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span><span>账单</span></a>
   </nav>
-  {% if session.get('logged_in') %}
+  {% if current_user.is_authenticated %}
   <form method="post" action="/logout" class="mt-2">
     <button type="submit" class="nav-item" title="退出登录">
       <i class="bi bi-box-arrow-left"></i><span>退出登录</span>

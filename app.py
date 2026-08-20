@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""考研学习进度追踪 —— Flask 应用入口
+"""考研学习进度追踪 —— Flask 应用入口（多用户架构）
 
 本地启动方式：
     pip install -r requirements.txt
@@ -10,19 +10,24 @@
     Build Command:  pip install -r requirements.txt
     Start Command:  gunicorn app:app   （平台自动注入 PORT 并接管端口绑定）
 
-数据库默认位于项目根下的 instance/data.db，首次启动自动创建并写入默认科目；
+数据库默认位于项目根下的 instance/data.db；
 可通过环境变量 DATABASE_PATH 覆盖（如 Render 持久磁盘 /var/data/data.db）。
+
+认证：Flask-Login 多用户系统，所有业务路由需登录；
+注册 /register，登录 /login（勾选“记住我”有效期 30 天），退出 /logout。
 """
-import hmac
 import json
 import os
 import secrets
 import shutil
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask_login import (LoginManager, current_user, login_required,
+                         login_user, logout_user)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 兼容便携版 Python（embeddable）等不自动加入脚本目录的情况
@@ -31,8 +36,8 @@ if BASE_DIR not in sys.path:
 
 
 def load_dotenv(path):
-    """极简 .env 加载器（零依赖，免装 python-dotenv）：
-    支持 KEY=VALUE 与 # 注释；不覆盖已存在的环境变量（Render 注入的变量优先）。"""
+    """极简 .env 加载器（零依赖）：支持 KEY=VALUE 与 # 注释，
+    不覆盖已存在的环境变量（Render 注入的变量优先）。"""
     if not os.path.exists(path):
         return
     with open(path, 'r', encoding='utf-8-sig') as f:  # utf-8-sig 兼容带 BOM 的文件
@@ -47,10 +52,10 @@ def load_dotenv(path):
                 os.environ[key] = value
 
 
-# 本地开发环境变量（SITE_PASSWORD 等）来自项目根下的 .env 文件
+# 本地开发环境变量（DATABASE_PATH 等）来自项目根下的 .env 文件
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from models import Subject, Record, Diary, Expense, db
+from models import Subject, Record, Diary, Expense, User, db
 from sqlalchemy import extract
 from sqlalchemy.exc import IntegrityError
 
@@ -83,8 +88,8 @@ if not os.environ.get('SECRET_KEY'):
 else:
     app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
 
-# 登录会话有效期 7 天
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)   # 勾选“记住我”后 30 天免登录
 
 # 让 jsonify 直接输出中文，而不是 \uXXXX 转义
 try:
@@ -94,33 +99,56 @@ except AttributeError:
 
 db.init_app(app)
 
+# ---------------------------------------------------------------- 认证（Flask-Login）
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'      # 未登录自动跳转 /login，并携带 next 参数
+login_manager.login_message = None      # 不使用 flash 消息
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+
+@app.before_request
+def check_session_revoked():
+    """按用户注销：退出登录后，该用户此前签发的所有旧 Cookie 立即失效"""
+    if current_user.is_authenticated:
+        invalid_before = current_user.tokens_invalid_before
+        login_at = float(session.get('login_at', 0))
+        if invalid_before is not None and login_at < invalid_before.timestamp():
+            logout_user()
+            session.clear()
+    return None
+
+
 DEFAULT_SUBJECTS = ['政治', '英语', '数学', '专业课']
 WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
 EXPENSE_CATEGORIES = ['餐饮', '资料费', '文具', '住宿', '交通', '娱乐', '其他']
 
-# 站点访问密码：优先环境变量（Render 中设置），其次 .env 文件；
-# 均未配置时生成临时密码打印到控制台（仅应急，建议尽快配置）
-SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or ''
-if not SITE_PASSWORD:
-    SITE_PASSWORD = secrets.token_urlsafe(9)
-    print('=' * 56)
-    print('  [!] 未配置 SITE_PASSWORD，本次启动的临时访问密码：')
-    print(f'      {SITE_PASSWORD}')
-    print('  建议：本地写入 .env；Render 在 Environment 中设置 SITE_PASSWORD')
-    print('=' * 56)
-
 
 def init_db():
-    """建表 + 首次运行写入默认科目"""
+    """建表；检测旧版单用户数据库并提示重置"""
     db.create_all()
-    if Subject.query.count() == 0:
-        try:
-            for i, name in enumerate(DEFAULT_SUBJECTS):
-                db.session.add(Subject(name=name, sort_order=i))
-            db.session.commit()
-        except IntegrityError:
-            # 多进程（如 gunicorn 多 worker）并发启动时，另一进程已完成初始化
-            db.session.rollback()
+    try:
+        cols = [row[1] for row in db.session.execute(db.text('PRAGMA table_info(subjects)'))]
+        if cols and 'user_id' not in cols:
+            print('=' * 56)
+            print('  [!] 检测到旧版单用户数据库（subjects 缺少 user_id 列）')
+            print('  多用户架构需要重建表结构。')
+            print('  1) 备份数据：复制 instance/data.db 保存到别处')
+            print('  2) 执行重置：python reset_db.py')
+            print('=' * 56)
+    except Exception:
+        pass
+
+
+def create_default_subjects(user):
+    """为新注册用户创建默认科目"""
+    for i, name in enumerate(DEFAULT_SUBJECTS):
+        db.session.add(Subject(user_id=user.id, name=name, sort_order=i))
 
 
 with app.app_context():
@@ -157,7 +185,7 @@ def _parse_period_param(value, lo, hi):
 
 
 def validate_record_payload(data):
-    """校验并清洗记录表单数据，返回 (payload, 错误信息)"""
+    """校验并清洗记录表单数据（含科目归属校验），返回 (payload, 错误信息)"""
     d, err = parse_date(data.get('date'))
     if err:
         return None, err
@@ -166,7 +194,8 @@ def validate_record_payload(data):
         subject_id = int(data.get('subject_id'))
     except (TypeError, ValueError):
         return None, '请选择有效的科目'
-    if db.session.get(Subject, subject_id) is None:
+    subject = db.session.get(Subject, subject_id)
+    if subject is None or subject.user_id != current_user.id:
         return None, '请选择有效的科目'
 
     try:
@@ -215,9 +244,12 @@ def validate_diary_payload(data):
     }, None
 
 
-def diary_streak():
-    """连续写日记天数：从今天（或昨天）往前连续计算"""
-    dates = {row[0] for row in db.session.query(Diary.entry_date).all()}
+def diary_streak(user_id):
+    """某用户连续写日记天数：从今天（或昨天）往前连续计算"""
+    dates = {
+        row[0] for row in db.session.query(Diary.entry_date)
+        .filter(Diary.user_id == user_id).all()
+    }
     if not dates:
         return 0
     today = date.today()
@@ -229,40 +261,38 @@ def diary_streak():
     return streak
 
 
-# ---------------------------------------------------------------- 登录保护
+# ---------------------------------------------------------------- 认证路由
 
-PUBLIC_PATHS = ('/login', '/logout', '/favicon.ico')
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    error = None
+    if request.method == 'POST':
+        username = str(request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        confirm = request.form.get('confirm_password') or ''
+        email = str(request.form.get('email') or '').strip() or None
 
-# 服务端注销状态：Flask 会话是客户端签名 Cookie，无法主动作废旧 Cookie；
-# 这里记录“全局注销时间”，登录时间早于它的会话一律视为已退出。
-LOGOUT_STATE_FILE = os.path.join(INSTANCE_DIR, 'logout_state.json')
-
-
-def _valid_after():
-    try:
-        with open(LOGOUT_STATE_FILE, 'r', encoding='utf-8') as f:
-            return float(json.load(f).get('valid_after', 0))
-    except (OSError, ValueError, TypeError):
-        return 0.0
-
-
-@app.before_request
-def require_login():
-    """除登录页、退出页与静态资源外，所有请求必须已登录，否则跳转 /login"""
-    path = request.path
-    if path.startswith('/static') or path in PUBLIC_PATHS:
-        return None
-
-    if not session.get('logged_in'):
-        next_url = request.full_path if request.query_string else request.path
-        return redirect(url_for('login', next=next_url))
-
-    # 已注销的旧会话立即失效
-    if float(session.get('login_at', 0)) < _valid_after():
-        session.clear()
-        next_url = request.full_path if request.query_string else request.path
-        return redirect(url_for('login', next=next_url))
-    return None
+        if not (2 <= len(username) <= 20):
+            error = '用户名长度需在 2-20 个字符之间'
+        elif password != confirm:
+            error = '两次输入的密码不一致'
+        elif len(password) < 6:
+            error = '密码至少 6 位'
+        elif email and ('@' not in email or len(email) > 120):
+            error = '邮箱格式不正确'
+        elif User.query.filter_by(username=username).first():
+            error = '用户名已被占用'
+        else:
+            user = User(username=username, email=email,
+                        password_hash=generate_password_hash(password))
+            db.session.add(user)
+            db.session.flush()           # 先拿到 user.id
+            create_default_subjects(user)
+            db.session.commit()
+            login_user(user, remember=False)
+            session['login_at'] = time.time()
+            return redirect(url_for('index'))
+    return render_template('register.html', error=error)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -274,23 +304,26 @@ def login():
         next_url = '/'
 
     if request.method == 'POST':
-        password = str(request.form.get('password') or '')
-        if hmac.compare_digest(password, SITE_PASSWORD):
-            session.clear()            # 先清空旧会话，防会话固定攻击
-            session['logged_in'] = True
+        username = str(request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+        remember = request.form.get('remember') == 'on'
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user, remember=remember)   # remember=True → 30 天免登录
             session['login_at'] = time.time()
-            session.permanent = True   # 有效期 7 天（PERMANENT_SESSION_LIFETIME）
             return redirect(next_url)
-        error = '密码错误，请重试'
+        error = '用户名或密码错误'
 
     return render_template('login.html', error=error, next=next_url)
 
 
 @app.route('/logout', methods=['GET', 'POST'])
+@login_required
 def logout():
-    # 记录全局注销时间，使该时间之前签发的所有会话立即失效
-    with open(LOGOUT_STATE_FILE, 'w', encoding='utf-8') as f:
-        json.dump({'valid_after': time.time()}, f)
+    # 记录注销时间，使该用户此前签发的所有会话立即失效
+    current_user.tokens_invalid_before = datetime.now()
+    db.session.commit()
+    logout_user()
     session.clear()
     return redirect(url_for('login'))
 
@@ -298,6 +331,7 @@ def logout():
 # ---------------------------------------------------------------- 页面
 
 @app.get('/')
+@login_required
 def index():
     return render_template('index.html')
 
@@ -305,7 +339,9 @@ def index():
 # ---------------------------------------------------------------- 仪表盘
 
 @app.get('/api/dashboard')
+@login_required
 def api_dashboard():
+    uid = current_user.id
     today = date.today()
 
     # 近 7 天（含今天）每日总时长
@@ -314,7 +350,7 @@ def api_dashboard():
         d = today - timedelta(days=i)
         minutes = (
             db.session.query(db.func.coalesce(db.func.sum(Record.minutes), 0))
-            .filter(Record.study_date == d)
+            .filter(Record.user_id == uid, Record.study_date == d)
             .scalar()
         )
         trend.append({
@@ -324,22 +360,23 @@ def api_dashboard():
         })
 
     total_minutes = int(
-        db.session.query(db.func.coalesce(db.func.sum(Record.minutes), 0)).scalar()
+        db.session.query(db.func.coalesce(db.func.sum(Record.minutes), 0))
+        .filter(Record.user_id == uid).scalar()
     )
     total_days = int(
-        db.session.query(db.func.count(db.func.distinct(Record.study_date))).scalar()
+        db.session.query(db.func.count(db.func.distinct(Record.study_date)))
+        .filter(Record.user_id == uid).scalar()
     )
     today_minutes = int(
         db.session.query(db.func.coalesce(db.func.sum(Record.minutes), 0))
-        .filter(Record.study_date == today)
-        .scalar()
+        .filter(Record.user_id == uid, Record.study_date == today).scalar()
     )
 
-    # 各科掌握度 = 该科最近一条记录的掌握度
+    # 各科掌握度 = 该用户该科最近一条记录的掌握度
     subjects = []
-    for s in Subject.query.order_by(Subject.sort_order, Subject.id).all():
+    for s in Subject.query.filter_by(user_id=uid).order_by(Subject.sort_order, Subject.id).all():
         last = (
-            Record.query.filter_by(subject_id=s.id)
+            Record.query.filter_by(user_id=uid, subject_id=s.id)
             .order_by(Record.study_date.desc(), Record.id.desc())
             .first()
         )
@@ -356,7 +393,7 @@ def api_dashboard():
         d = today - timedelta(days=i)
         amt = float(
             db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0))
-            .filter(Expense.date == d)
+            .filter(Expense.user_id == uid, Expense.date == d)
             .scalar()
         )
         expense_total += amt
@@ -370,7 +407,7 @@ def api_dashboard():
         'total_days': total_days,
         'total_minutes': total_minutes,
         'today_minutes': today_minutes,
-        'diary_streak': diary_streak(),
+        'diary_streak': diary_streak(uid),
         'expense7': {
             'total': round(expense_total, 2),
             'days': expense_days,
@@ -383,12 +420,15 @@ def api_dashboard():
 # ---------------------------------------------------------------- 科目管理
 
 @app.get('/api/subjects')
+@login_required
 def api_subjects():
-    subjects = Subject.query.order_by(Subject.sort_order, Subject.id).all()
+    subjects = Subject.query.filter_by(user_id=current_user.id) \
+        .order_by(Subject.sort_order, Subject.id).all()
     return jsonify([s.to_dict() for s in subjects])
 
 
 @app.post('/api/subjects')
+@login_required
 def api_add_subject():
     data = request.get_json(silent=True) or {}
     name = str(data.get('name') or '').strip()
@@ -396,20 +436,22 @@ def api_add_subject():
         return error('科目名称不能为空')
     if len(name) > 50:
         return error('科目名称过长（最多 50 字）')
-    if Subject.query.filter_by(name=name).first():
+    if Subject.query.filter_by(user_id=current_user.id, name=name).first():
         return error(f'科目「{name}」已存在')
 
-    max_order = db.session.query(db.func.max(Subject.sort_order)).scalar() or 0
-    subject = Subject(name=name, sort_order=max_order + 1)
+    max_order = db.session.query(db.func.max(Subject.sort_order)) \
+        .filter(Subject.user_id == current_user.id).scalar() or 0
+    subject = Subject(user_id=current_user.id, name=name, sort_order=max_order + 1)
     db.session.add(subject)
     db.session.commit()
     return jsonify(subject.to_dict()), 201
 
 
 @app.delete('/api/subjects/<int:sid>')
+@login_required
 def api_delete_subject(sid):
     subject = db.session.get(Subject, sid)
-    if subject is None:
+    if subject is None or subject.user_id != current_user.id:
         return error('科目不存在', 404)
     db.session.delete(subject)  # 级联删除该科目下所有记录
     db.session.commit()
@@ -419,8 +461,9 @@ def api_delete_subject(sid):
 # ---------------------------------------------------------------- 学习记录
 
 @app.get('/api/records')
+@login_required
 def api_records():
-    query = Record.query
+    query = Record.query.filter_by(user_id=current_user.id)
 
     date_str = request.args.get('date')
     subject_id = request.args.get('subject_id')
@@ -442,20 +485,22 @@ def api_records():
 
 
 @app.post('/api/records')
+@login_required
 def api_add_record():
     payload, err = validate_record_payload(request.get_json(silent=True) or {})
     if err:
         return error(err)
-    record = Record(**payload)
+    record = Record(user_id=current_user.id, **payload)
     db.session.add(record)
     db.session.commit()
     return jsonify(record.to_dict()), 201
 
 
 @app.put('/api/records/<int:rid>')
+@login_required
 def api_update_record(rid):
     record = db.session.get(Record, rid)
-    if record is None:
+    if record is None or record.user_id != current_user.id:
         return error('记录不存在', 404)
     payload, err = validate_record_payload(request.get_json(silent=True) or {})
     if err:
@@ -467,9 +512,10 @@ def api_update_record(rid):
 
 
 @app.delete('/api/records/<int:rid>')
+@login_required
 def api_delete_record(rid):
     record = db.session.get(Record, rid)
-    if record is None:
+    if record is None or record.user_id != current_user.id:
         return error('记录不存在', 404)
     db.session.delete(record)
     db.session.commit()
@@ -479,8 +525,9 @@ def api_delete_record(rid):
 # ---------------------------------------------------------------- 学习日记
 
 @app.get('/api/diaries')
+@login_required
 def api_diaries():
-    query = Diary.query
+    query = Diary.query.filter_by(user_id=current_user.id)
 
     month = (request.args.get('month') or '').strip()   # 形如 2025-08
     keyword = (request.args.get('keyword') or '').strip()
@@ -504,29 +551,33 @@ def api_diaries():
 
 
 @app.post('/api/diaries')
+@login_required
 def api_add_diary():
     payload, err = validate_diary_payload(request.get_json(silent=True) or {})
     if err:
         return error(err)
 
-    # 一天一篇：同日期已有日记则覆盖更新
-    existing = Diary.query.filter_by(entry_date=payload['entry_date']).first()
+    # 每个用户一天一篇：同日期已有日记则覆盖更新
+    existing = Diary.query.filter_by(
+        user_id=current_user.id, entry_date=payload['entry_date']
+    ).first()
     if existing:
         for key, value in payload.items():
             setattr(existing, key, value)
         db.session.commit()
         return jsonify({'created': False, 'entry': existing.to_dict()})
 
-    diary = Diary(**payload)
+    diary = Diary(user_id=current_user.id, **payload)
     db.session.add(diary)
     db.session.commit()
     return jsonify({'created': True, 'entry': diary.to_dict()}), 201
 
 
 @app.put('/api/diaries/<int:did>')
+@login_required
 def api_update_diary(did):
     diary = db.session.get(Diary, did)
-    if diary is None:
+    if diary is None or diary.user_id != current_user.id:
         return error('日记不存在', 404)
 
     payload, err = validate_diary_payload(request.get_json(silent=True) or {})
@@ -534,7 +585,9 @@ def api_update_diary(did):
         return error(err)
 
     conflict = Diary.query.filter(
-        Diary.entry_date == payload['entry_date'], Diary.id != did
+        Diary.user_id == current_user.id,
+        Diary.entry_date == payload['entry_date'],
+        Diary.id != did,
     ).first()
     if conflict:
         return error('该日期已有日记，不能重复创建')
@@ -546,9 +599,10 @@ def api_update_diary(did):
 
 
 @app.delete('/api/diaries/<int:did>')
+@login_required
 def api_delete_diary(did):
     diary = db.session.get(Diary, did)
-    if diary is None:
+    if diary is None or diary.user_id != current_user.id:
         return error('日记不存在', 404)
     db.session.delete(diary)
     db.session.commit()
@@ -558,8 +612,10 @@ def api_delete_diary(did):
 # ---------------------------------------------------------------- 记账
 
 @app.get('/expenses')
+@login_required
 def expenses_page():
-    query = Expense.query
+    uid = current_user.id
+    query = Expense.query.filter_by(user_id=uid)
 
     category = (request.args.get('category') or '').strip()
     start = (request.args.get('start') or '').strip()
@@ -593,29 +649,31 @@ def expenses_page():
             period_end = date(year + 1, 1, 1)
         query = query.filter(Expense.date >= period_start, Expense.date < period_end)
 
-    # 年份下拉范围：最早记录年份 → 当前年份（无记录时只有当前年份）
-    earliest = db.session.query(db.func.min(Expense.date)).scalar()
+    # 年份下拉范围：该用户最早记录年份 → 当前年份（无记录时只有当前年份）
+    earliest = db.session.query(db.func.min(Expense.date)) \
+        .filter(Expense.user_id == uid).scalar()
     min_year = earliest.year if earliest else current_year
     years = list(range(current_year, min_year - 1, -1))
 
-    # ---------- 聚合统计（extract + func.sum） ----------
+    # ---------- 聚合统计（extract + func.sum，按用户隔离） ----------
     # 年度统计
     if year is not None:
         year_total = float(db.session.query(
             db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(extract('year', Expense.date) == year).scalar())
+        ).filter(Expense.user_id == uid, extract('year', Expense.date) == year).scalar())
         year_label = f'{year} 年'
     else:
         year_total = float(db.session.query(
             db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).scalar())
+        ).filter(Expense.user_id == uid).scalar())
         year_label = '全部年份'
 
     # 月度统计
     if year is not None and month is not None:
         month_total = float(db.session.query(
             db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(extract('year', Expense.date) == year,
+        ).filter(Expense.user_id == uid,
+                 extract('year', Expense.date) == year,
                  extract('month', Expense.date) == month).scalar())
         month_label = f'{year} 年 {month} 月'
     elif year is not None:
@@ -624,7 +682,8 @@ def expenses_page():
     else:
         month_total = float(db.session.query(
             db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(extract('year', Expense.date) == current_year,
+        ).filter(Expense.user_id == uid,
+                 extract('year', Expense.date) == current_year,
                  extract('month', Expense.date) == current_month).scalar())
         month_label = f'本月（{current_year} 年 {current_month} 月）'
 
@@ -673,6 +732,7 @@ def expenses_page():
 
 
 @app.get('/expense/add')
+@login_required
 def expense_add_page():
     return render_template(
         'expense_add.html',
@@ -684,6 +744,7 @@ def expense_add_page():
 
 
 @app.post('/expense/add')
+@login_required
 def expense_add_submit():
     form = request.form
 
@@ -709,16 +770,18 @@ def expense_add_submit():
                                form=form, error=err, today=date.today().isoformat())
 
     description = str(form.get('description') or '').strip()[:200]
-    expense = Expense(amount=round(amount, 2), category=category, date=d, description=description)
+    expense = Expense(user_id=current_user.id, amount=round(amount, 2),
+                      category=category, date=d, description=description)
     db.session.add(expense)
     db.session.commit()
     return redirect('/expenses')
 
 
 @app.post('/expense/delete/<int:eid>')
+@login_required
 def expense_delete(eid):
     expense = db.session.get(Expense, eid)
-    if expense is None:
+    if expense is None or expense.user_id != current_user.id:
         return error('记录不存在', 404)
     db.session.delete(expense)
     db.session.commit()
