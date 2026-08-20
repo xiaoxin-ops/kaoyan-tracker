@@ -324,6 +324,12 @@ def logout():
 
 # ---------------------------------------------------------------- 页面
 
+@app.get('/healthz')
+def healthz():
+    """健康检查端点（公开，不依赖登录与数据库），供 Render 探活使用"""
+    return jsonify({'status': 'ok'})
+
+
 @app.get('/')
 @login_required
 def index():

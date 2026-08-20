@@ -9,7 +9,7 @@ services:
     region: singapore          # 新加坡节点，国内访问延迟较低
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
-    healthCheckPath: /
+    healthCheckPath: /healthz   # 公开健康检查端点（首页已加登录保护，不能用 / 探活）
     autoDeploy: true           # GitHub 有 push 时自动部署
     envVars:
       - key: SECRET_KEY
