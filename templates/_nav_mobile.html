@@ -1,0 +1,11 @@
+<!-- ==================== 顶部导航（移动端，全站共享） ==================== -->
+<nav class="mobile-nav">
+  <span class="brand-title">研途追踪</span>
+  <div class="d-flex gap-1">
+    <a class="nav-item" href="/#dashboard" data-view="dashboard"><i class="bi bi-speedometer2"></i></a>
+    <a class="nav-item" href="/#records" data-view="records"><i class="bi bi-journal-text"></i></a>
+    <a class="nav-item" href="/#diary" data-view="diary"><i class="bi bi-journal-bookmark"></i></a>
+    <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i></a>
+    <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span></a>
+  </div>
+</nav>

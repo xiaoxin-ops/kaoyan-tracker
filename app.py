@@ -19,14 +19,14 @@ import shutil
 import sys
 from datetime import date, timedelta
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 兼容便携版 Python（embeddable）等不自动加入脚本目录的情况
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from models import Subject, Record, Diary, db
+from models import Subject, Record, Diary, Expense, db
 from sqlalchemy.exc import IntegrityError
 
 # 数据库文件：默认放在项目根下的 instance/ 目录（Render 部署时该目录可写）；
@@ -54,6 +54,7 @@ db.init_app(app)
 
 DEFAULT_SUBJECTS = ['政治', '英语', '数学', '专业课']
 WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
+EXPENSE_CATEGORIES = ['餐饮', '资料费', '文具', '住宿', '交通', '娱乐', '其他']
 
 
 def init_db():
@@ -216,11 +217,32 @@ def api_dashboard():
             'mastery': last.mastery if last else 0,
         })
 
+    # 近 7 天花费（记账模块）
+    expense_days = []
+    expense_total = 0.0
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        amt = float(
+            db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0))
+            .filter(Expense.date == d)
+            .scalar()
+        )
+        expense_total += amt
+        expense_days.append({
+            'date': d.isoformat(),
+            'label': f"{d.month}/{d.day}",
+            'amount': round(amt, 2),
+        })
+
     return jsonify({
         'total_days': total_days,
         'total_minutes': total_minutes,
         'today_minutes': today_minutes,
         'diary_streak': diary_streak(),
+        'expense7': {
+            'total': round(expense_total, 2),
+            'days': expense_days,
+        },
         'trend': trend,
         'subjects': subjects,
     })
@@ -399,6 +421,102 @@ def api_delete_diary(did):
     db.session.delete(diary)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------- 记账
+
+@app.get('/expenses')
+def expenses_page():
+    query = Expense.query
+
+    category = (request.args.get('category') or '').strip()
+    start = (request.args.get('start') or '').strip()
+    end = (request.args.get('end') or '').strip()
+    filtered = False
+
+    if category:
+        if category not in EXPENSE_CATEGORIES:
+            return error('类别不正确')
+        query = query.filter(Expense.category == category)
+        filtered = True
+    if start:
+        d, err = parse_date(start)
+        if err:
+            return error(err)
+        query = query.filter(Expense.date >= d)
+        filtered = True
+    if end:
+        d, err = parse_date(end)
+        if err:
+            return error(err)
+        query = query.filter(Expense.date <= d)
+        filtered = True
+
+    expenses = query.order_by(Expense.date.desc(), Expense.id.desc()).all()
+    total = round(float(sum(e.amount for e in expenses)), 2)
+    return render_template(
+        'expenses.html',
+        expenses=expenses,
+        total=total,
+        categories=EXPENSE_CATEGORIES,
+        category=category,
+        start=start,
+        end=end,
+        filtered=filtered,
+    )
+
+
+@app.get('/expense/add')
+def expense_add_page():
+    return render_template(
+        'expense_add.html',
+        categories=EXPENSE_CATEGORIES,
+        form={},
+        error=None,
+        today=date.today().isoformat(),
+    )
+
+
+@app.post('/expense/add')
+def expense_add_submit():
+    form = request.form
+
+    try:
+        amount = float(str(form.get('amount') or '').strip())
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount <= 0:
+        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
+                               form=form, error='金额必须是大于 0 的数字', today=date.today().isoformat())
+    if amount > 1000000:
+        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
+                               form=form, error='金额过大', today=date.today().isoformat())
+
+    category = str(form.get('category') or '').strip()
+    if category not in EXPENSE_CATEGORIES:
+        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
+                               form=form, error='请选择有效的支出类别', today=date.today().isoformat())
+
+    d, err = parse_date(form.get('date'))
+    if err:
+        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
+                               form=form, error=err, today=date.today().isoformat())
+
+    description = str(form.get('description') or '').strip()[:200]
+    expense = Expense(amount=round(amount, 2), category=category, date=d, description=description)
+    db.session.add(expense)
+    db.session.commit()
+    return redirect('/expenses')
+
+
+@app.post('/expense/delete/<int:eid>')
+def expense_delete(eid):
+    expense = db.session.get(Expense, eid)
+    if expense is None:
+        return error('记录不存在', 404)
+    db.session.delete(expense)
+    db.session.commit()
+    return redirect('/expenses')
 
 
 # ---------------------------------------------------------------- 启动

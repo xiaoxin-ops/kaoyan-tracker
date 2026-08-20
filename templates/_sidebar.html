@@ -1,0 +1,18 @@
+<!-- ==================== 侧边栏（桌面端，全站共享） ==================== -->
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-mark">研</span>
+    <div>
+      <div class="brand-title">研途追踪</div>
+      <div class="brand-sub">考研学习进度</div>
+    </div>
+  </div>
+  <nav class="nav flex-column gap-1">
+    <a class="nav-item" href="/#dashboard" data-view="dashboard"><i class="bi bi-speedometer2"></i><span>仪表盘</span></a>
+    <a class="nav-item" href="/#records" data-view="records"><i class="bi bi-journal-text"></i><span>学习记录</span></a>
+    <a class="nav-item" href="/#diary" data-view="diary"><i class="bi bi-journal-bookmark"></i><span>学习日记</span></a>
+    <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i><span>科目管理</span></a>
+    <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span><span>账单</span></a>
+  </nav>
+  <div class="sidebar-foot">Flask · SQLite<br>Bootstrap 5 · Chart.js</div>
+</aside>

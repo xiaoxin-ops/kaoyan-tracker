@@ -4,6 +4,7 @@
 - Subject: 科目表（默认内置政治 / 英语 / 数学 / 专业课，支持增删）
 - Record:  记录表（日期、科目、学习时长、内容摘要、掌握度百分比）
 - Diary:   日记表（一天一篇：日期、心情、标题、正文）
+- Expense: 支出表（考研花销记账：金额、类别、日期、备注）
 """
 from datetime import datetime
 
@@ -82,4 +83,25 @@ class Diary(db.Model):
             'title': self.title,
             'content': self.content,
             'mood': self.mood,
+        }
+
+
+class Expense(db.Model):
+    """支出表：考研花销记账"""
+    __tablename__ = 'expenses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    amount = db.Column(db.Float, nullable=False, comment='金额（元）')
+    category = db.Column(db.String(50), nullable=False, index=True, comment='支出类别')
+    description = db.Column(db.String(200), nullable=False, default='', comment='备注 / 用途描述')
+    date = db.Column(db.Date, nullable=False, index=True, comment='支出日期')
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'amount': self.amount,
+            'category': self.category,
+            'description': self.description,
+            'date': self.date.isoformat(),
         }
