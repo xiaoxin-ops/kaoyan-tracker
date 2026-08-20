@@ -19,7 +19,6 @@
 import json
 import os
 import secrets
-import shutil
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -64,11 +63,6 @@ from sqlalchemy.exc import IntegrityError
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
 os.makedirs(INSTANCE_DIR, exist_ok=True)
 DB_PATH = os.path.abspath(os.environ.get('DATABASE_PATH', os.path.join(INSTANCE_DIR, 'data.db')))
-
-# 兼容旧版本：旧版 study.db 存在而新位置还没有数据库时，自动迁移
-LEGACY_DB = os.path.join(BASE_DIR, 'study.db')
-if not os.path.exists(DB_PATH) and os.path.exists(LEGACY_DB):
-    shutil.copyfile(LEGACY_DB, DB_PATH)
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DB_PATH
@@ -403,11 +397,24 @@ def api_dashboard():
             'amount': round(amt, 2),
         })
 
+    record_count = int(
+        db.session.query(db.func.count(Record.id)).filter(Record.user_id == uid).scalar()
+    )
+    diary_count = int(
+        db.session.query(db.func.count(Diary.id)).filter(Diary.user_id == uid).scalar()
+    )
+    expense_count = int(
+        db.session.query(db.func.count(Expense.id)).filter(Expense.user_id == uid).scalar()
+    )
+
     return jsonify({
         'total_days': total_days,
         'total_minutes': total_minutes,
         'today_minutes': today_minutes,
         'diary_streak': diary_streak(uid),
+        'record_count': record_count,
+        'diary_count': diary_count,
+        'expense_count': expense_count,
         'expense7': {
             'total': round(expense_total, 2),
             'days': expense_days,

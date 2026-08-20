@@ -11,6 +11,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="login-body">
+<nav class="auth-topbar">
+  <a href="/" class="auth-brand">
+    <span class="brand-mark brand-mark-sm">研</span>
+    <span class="brand-title">研途追踪</span>
+  </a>
+  <div class="d-flex gap-2">
+    <a href="/login" class="btn btn-outline-secondary btn-sm">登录</a>
+    <a href="/register" class="btn btn-primary btn-soft btn-sm">注册</a>
+  </div>
+</nav>
 <div class="login-wrap">
   <div class="card login-card">
     <div class="card-body p-4 p-md-5 text-center">

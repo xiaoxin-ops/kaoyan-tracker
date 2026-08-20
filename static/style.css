@@ -163,6 +163,32 @@ a.nav-item{text-decoration:none}
 .login-card{box-shadow:0 10px 34px rgba(75,74,68,.12)}
 .login-mark{width:56px;height:56px;font-size:1.6rem;border-radius:16px}
 .login-body .input-group-text{background:#F4F2EC;border-color:#DDD8CA;color:var(--muted)}
+/* ============ 账户下拉菜单 ============ */
+.dropdown-menu-morandi{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 8px 24px rgba(75,74,68,.14);padding:.4rem;min-width:200px;
+}
+.dropdown-menu-morandi .dropdown-item{border-radius:8px;font-size:.9rem;color:var(--text)}
+.dropdown-menu-morandi .dropdown-item:hover{background:#EFEBE1}
+.dropdown-menu-morandi .dropdown-logout{
+  color:var(--danger);width:100%;text-align:left;background:none;border:0;
+  padding:6px 14px;border-radius:8px;font-size:.9rem;
+}
+.dropdown-menu-morandi .dropdown-logout:hover{background:#F3E3E0;color:#A06F6A}
+.sidebar .nav-item.dropdown-toggle::after{margin-left:auto}
+.mobile-nav .nav-item.dropdown-toggle::after{display:none}
+/* ============ 登录/注册页顶部导航条 ============ */
+.auth-topbar{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 20px;background:var(--sidebar);border-bottom:1px solid var(--border);
+}
+.auth-brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
+.auth-brand:hover{color:var(--text)}
+.brand-mark-sm{width:32px;height:32px;font-size:.95rem;border-radius:10px}
+.login-body{padding-top:88px}
+/* ============ 仪表盘空状态 ============ */
+.empty-emoji{font-size:3rem;line-height:1}
 /* ============ Toast ============ */
 .toast-ok{background-color:var(--sage-deep);color:#fff}
 .toast-err{background-color:var(--danger);color:#fff}
