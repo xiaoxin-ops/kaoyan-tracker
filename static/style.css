@@ -147,6 +147,9 @@ a.nav-item{text-decoration:none}
 .mood-item .mood-emoji{font-size:1.35rem;line-height:1.2}
 .mood-item.selected{border-color:var(--sage);background:#E3E8D8;color:#55663F;box-shadow:0 2px 8px rgba(126,145,102,.2)}
 /* ============ 记账 ============ */
+.period-card .card-body{padding:20px}
+.period-blue{background:#E8EEF2;border-color:#D3E0E9}
+.period-green{background:#E9EEE0;border-color:#D7E2CB}
 .exp-mini{display:flex;gap:6px;align-items:flex-end;height:110px}
 .exp-mini-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
 .exp-mini-bar-box{width:100%;height:64px;display:flex;align-items:flex-end;justify-content:center}
@@ -154,6 +157,12 @@ a.nav-item{text-decoration:none}
 .exp-mini-label{font-size:.68rem;color:var(--muted)}
 .exp-mini-amt{font-size:.68rem;color:var(--muted);height:12px}
 .amount-cell{font-weight:600}
+/* ============ 登录页 ============ */
+.login-body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.login-wrap{width:100%;max-width:400px}
+.login-card{box-shadow:0 10px 34px rgba(75,74,68,.12)}
+.login-mark{width:56px;height:56px;font-size:1.6rem;border-radius:16px}
+.login-body .input-group-text{background:#F4F2EC;border-color:#DDD8CA;color:var(--muted)}
 /* ============ Toast ============ */
 .toast-ok{background-color:var(--sage-deep);color:#fff}
 .toast-err{background-color:var(--danger);color:#fff}

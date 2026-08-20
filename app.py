@@ -13,20 +13,45 @@
 数据库默认位于项目根下的 instance/data.db，首次启动自动创建并写入默认科目；
 可通过环境变量 DATABASE_PATH 覆盖（如 Render 持久磁盘 /var/data/data.db）。
 """
+import hmac
+import json
 import os
 import secrets
 import shutil
 import sys
+import time
 from datetime import date, timedelta
 
-from flask import Flask, jsonify, redirect, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 兼容便携版 Python（embeddable）等不自动加入脚本目录的情况
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+
+def load_dotenv(path):
+    """极简 .env 加载器（零依赖，免装 python-dotenv）：
+    支持 KEY=VALUE 与 # 注释；不覆盖已存在的环境变量（Render 注入的变量优先）。"""
+    if not os.path.exists(path):
+        return
+    with open(path, 'r', encoding='utf-8-sig') as f:  # utf-8-sig 兼容带 BOM 的文件
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+# 本地开发环境变量（SITE_PASSWORD 等）来自项目根下的 .env 文件
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
 from models import Subject, Record, Diary, Expense, db
+from sqlalchemy import extract
 from sqlalchemy.exc import IntegrityError
 
 # 数据库文件：默认放在项目根下的 instance/ 目录（Render 部署时该目录可写）；
@@ -43,7 +68,24 @@ if not os.path.exists(DB_PATH) and os.path.exists(LEGACY_DB):
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DB_PATH
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(24)
+
+# 会话密钥：优先环境变量（Render 中设置，保证重部署后登录态不失效）；
+# 本地无环境变量时持久化到 instance/.secret_key，避免每次重启都丢失登录状态
+if not os.environ.get('SECRET_KEY'):
+    SECRET_KEY_FILE = os.path.join(INSTANCE_DIR, '.secret_key')
+    if os.path.exists(SECRET_KEY_FILE):
+        with open(SECRET_KEY_FILE, 'r', encoding='utf-8') as f:
+            app.config['SECRET_KEY'] = f.read().strip()
+    else:
+        app.config['SECRET_KEY'] = secrets.token_hex(24)
+        with open(SECRET_KEY_FILE, 'w', encoding='utf-8') as f:
+            f.write(app.config['SECRET_KEY'])
+else:
+    app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
+
+# 登录会话有效期 7 天
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
 # 让 jsonify 直接输出中文，而不是 \uXXXX 转义
 try:
     app.json.ensure_ascii = False          # Flask 2.3+
@@ -55,6 +97,17 @@ db.init_app(app)
 DEFAULT_SUBJECTS = ['政治', '英语', '数学', '专业课']
 WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
 EXPENSE_CATEGORIES = ['餐饮', '资料费', '文具', '住宿', '交通', '娱乐', '其他']
+
+# 站点访问密码：优先环境变量（Render 中设置），其次 .env 文件；
+# 均未配置时生成临时密码打印到控制台（仅应急，建议尽快配置）
+SITE_PASSWORD = os.environ.get('SITE_PASSWORD') or ''
+if not SITE_PASSWORD:
+    SITE_PASSWORD = secrets.token_urlsafe(9)
+    print('=' * 56)
+    print('  [!] 未配置 SITE_PASSWORD，本次启动的临时访问密码：')
+    print(f'      {SITE_PASSWORD}')
+    print('  建议：本地写入 .env；Render 在 Environment 中设置 SITE_PASSWORD')
+    print('=' * 56)
 
 
 def init_db():
@@ -88,6 +141,19 @@ def parse_date(value):
         return date.fromisoformat(str(value)), None
     except (TypeError, ValueError):
         return None, '日期格式不正确（应为 YYYY-MM-DD）'
+
+
+def _parse_period_param(value, lo, hi):
+    """解析年/月参数：None 或空串 → 'all'（全部），非法值 → 'invalid'，否则返回整数"""
+    if value is None or str(value).strip() == '':
+        return 'all'
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return 'invalid'
+    if not lo <= n <= hi:
+        return 'invalid'
+    return n
 
 
 def validate_record_payload(data):
@@ -161,6 +227,72 @@ def diary_streak():
         streak += 1
         cursor -= timedelta(days=1)
     return streak
+
+
+# ---------------------------------------------------------------- 登录保护
+
+PUBLIC_PATHS = ('/login', '/logout', '/favicon.ico')
+
+# 服务端注销状态：Flask 会话是客户端签名 Cookie，无法主动作废旧 Cookie；
+# 这里记录“全局注销时间”，登录时间早于它的会话一律视为已退出。
+LOGOUT_STATE_FILE = os.path.join(INSTANCE_DIR, 'logout_state.json')
+
+
+def _valid_after():
+    try:
+        with open(LOGOUT_STATE_FILE, 'r', encoding='utf-8') as f:
+            return float(json.load(f).get('valid_after', 0))
+    except (OSError, ValueError, TypeError):
+        return 0.0
+
+
+@app.before_request
+def require_login():
+    """除登录页、退出页与静态资源外，所有请求必须已登录，否则跳转 /login"""
+    path = request.path
+    if path.startswith('/static') or path in PUBLIC_PATHS:
+        return None
+
+    if not session.get('logged_in'):
+        next_url = request.full_path if request.query_string else request.path
+        return redirect(url_for('login', next=next_url))
+
+    # 已注销的旧会话立即失效
+    if float(session.get('login_at', 0)) < _valid_after():
+        session.clear()
+        next_url = request.full_path if request.query_string else request.path
+        return redirect(url_for('login', next=next_url))
+    return None
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    next_url = request.values.get('next') or '/'
+    # 防开放重定向：只允许站内相对路径
+    if not next_url.startswith('/') or next_url.startswith('//'):
+        next_url = '/'
+
+    if request.method == 'POST':
+        password = str(request.form.get('password') or '')
+        if hmac.compare_digest(password, SITE_PASSWORD):
+            session.clear()            # 先清空旧会话，防会话固定攻击
+            session['logged_in'] = True
+            session['login_at'] = time.time()
+            session.permanent = True   # 有效期 7 天（PERMANENT_SESSION_LIFETIME）
+            return redirect(next_url)
+        error = '密码错误，请重试'
+
+    return render_template('login.html', error=error, next=next_url)
+
+
+@app.route('/logout', methods=['GET', 'POST'])
+def logout():
+    # 记录全局注销时间，使该时间之前签发的所有会话立即失效
+    with open(LOGOUT_STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump({'valid_after': time.time()}, f)
+    session.clear()
+    return redirect(url_for('login'))
 
 
 # ---------------------------------------------------------------- 页面
@@ -432,8 +564,72 @@ def expenses_page():
     category = (request.args.get('category') or '').strip()
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
-    filtered = False
 
+    # ---------- 年 / 月周期参数（首次进入默认当前年 + 当前月） ----------
+    today = date.today()
+    current_year, current_month = today.year, today.month
+    year_raw = request.args.get('year')
+    month_raw = request.args.get('month')
+
+    if year_raw is None and month_raw is None:
+        year, month = current_year, current_month
+    else:
+        year = _parse_period_param(year_raw, 1970, 2200)
+        month = _parse_period_param(month_raw, 1, 12)
+        if year == 'invalid':
+            return error('年份格式不正确（应为 YYYY）')
+        if month == 'invalid':
+            return error('月份格式不正确（应为 1-12）')
+        year = None if year == 'all' else year
+        month = None if month == 'all' else month
+
+    # 列表按所选周期过滤（选月份 → 该月；只选年份 → 该年；全部 → 不过滤）
+    if year is not None:
+        if month is not None:
+            period_start = date(year, month, 1)
+            period_end = (period_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        else:
+            period_start = date(year, 1, 1)
+            period_end = date(year + 1, 1, 1)
+        query = query.filter(Expense.date >= period_start, Expense.date < period_end)
+
+    # 年份下拉范围：最早记录年份 → 当前年份（无记录时只有当前年份）
+    earliest = db.session.query(db.func.min(Expense.date)).scalar()
+    min_year = earliest.year if earliest else current_year
+    years = list(range(current_year, min_year - 1, -1))
+
+    # ---------- 聚合统计（extract + func.sum） ----------
+    # 年度统计
+    if year is not None:
+        year_total = float(db.session.query(
+            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+        ).filter(extract('year', Expense.date) == year).scalar())
+        year_label = f'{year} 年'
+    else:
+        year_total = float(db.session.query(
+            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+        ).scalar())
+        year_label = '全部年份'
+
+    # 月度统计
+    if year is not None and month is not None:
+        month_total = float(db.session.query(
+            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+        ).filter(extract('year', Expense.date) == year,
+                 extract('month', Expense.date) == month).scalar())
+        month_label = f'{year} 年 {month} 月'
+    elif year is not None:
+        month_total = year_total
+        month_label = f'{year} 年全年'
+    else:
+        month_total = float(db.session.query(
+            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+        ).filter(extract('year', Expense.date) == current_year,
+                 extract('month', Expense.date) == current_month).scalar())
+        month_label = f'本月（{current_year} 年 {current_month} 月）'
+
+    # ---------- 原有筛选（类别 / 日期范围） ----------
+    filtered = False
     if category:
         if category not in EXPENSE_CATEGORIES:
             return error('类别不正确')
@@ -451,6 +647,9 @@ def expenses_page():
             return error(err)
         query = query.filter(Expense.date <= d)
         filtered = True
+    # 周期偏离默认值也算“筛选”
+    if not (year == current_year and month == current_month):
+        filtered = True
 
     expenses = query.order_by(Expense.date.desc(), Expense.id.desc()).all()
     total = round(float(sum(e.amount for e in expenses)), 2)
@@ -463,6 +662,13 @@ def expenses_page():
         start=start,
         end=end,
         filtered=filtered,
+        month_total=round(month_total, 2),
+        month_label=month_label,
+        year_total=round(year_total, 2),
+        year_label=year_label,
+        year=year,
+        month=month,
+        years=years,
     )
 
 

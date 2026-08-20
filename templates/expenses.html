@@ -29,46 +29,101 @@
         </a>
       </div>
 
-      <!-- 总支出 -->
-      <div class="card stat-card mb-3">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="stat-icon icon-gold"><i class="bi bi-cash-stack"></i></div>
-          <div>
-            <div class="stat-label">总支出{% if filtered %}（当前筛选）{% endif %}</div>
-            <div class="stat-value">¥ {{ '%.2f'|format(total) }}</div>
+      <form method="get" action="/expenses" id="exp-filter-form">
+
+        <!-- ==================== 统计区域 ==================== -->
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <div class="card stat-card period-card period-blue h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div class="stat-label">月度统计</div>
+                    <div class="stat-value">¥ {{ '%.2f'|format(month_total) }}</div>
+                    <div class="text-muted small mt-1">{{ month_label }}</div>
+                  </div>
+                  <div class="stat-icon icon-blue"><i class="bi bi-calendar-month"></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card stat-card period-card period-green h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div class="stat-label">年度统计</div>
+                    <div class="stat-value">¥ {{ '%.2f'|format(year_total) }}</div>
+                    <div class="text-muted small mt-1">{{ year_label }}</div>
+                  </div>
+                  <div class="stat-icon icon-sage"><i class="bi bi-calendar3"></i></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 筛选栏 -->
-      <div class="card mb-3">
-        <div class="card-body">
-          <form method="get" action="/expenses" class="filter-bar w-100">
-            <div class="field">
-              <label class="d-block">类别</label>
-              <select name="category" class="form-select" onchange="this.form.submit()">
-                <option value="">全部类别</option>
-                {% for c in categories %}
-                <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
-                {% endfor %}
-              </select>
+        <!-- 统计范围切换 -->
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="filter-bar w-100">
+              <div class="field">
+                <label class="d-block">年份</label>
+                <select name="year" class="form-select" onchange="onPeriodChange()">
+                  <option value="">全部年份</option>
+                  {% for y in years %}
+                  <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }} 年</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label class="d-block">月份</label>
+                <select name="month" class="form-select" onchange="this.form.submit()"
+                        {% if year is none %}disabled{% endif %}>
+                  <option value="">全部月份</option>
+                  {% for m in range(1, 13) %}
+                  <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ m }} 月</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label class="d-block">类别</label>
+                <select name="category" class="form-select" onchange="this.form.submit()">
+                  <option value="">全部类别</option>
+                  {% for c in categories %}
+                  <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label class="d-block">开始日期</label>
+                <input type="date" name="start" class="form-control" value="{{ start or '' }}" onchange="this.form.submit()">
+              </div>
+              <div class="field">
+                <label class="d-block">结束日期</label>
+                <input type="date" name="end" class="form-control" value="{{ end or '' }}" onchange="this.form.submit()">
+              </div>
+              <div class="filter-actions">
+                <a href="/expenses" class="btn btn-outline-secondary">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>重置
+                </a>
+              </div>
             </div>
-            <div class="field">
-              <label class="d-block">开始日期</label>
-              <input type="date" name="start" class="form-control" value="{{ start or '' }}" onchange="this.form.submit()">
-            </div>
-            <div class="field">
-              <label class="d-block">结束日期</label>
-              <input type="date" name="end" class="form-control" value="{{ end or '' }}" onchange="this.form.submit()">
-            </div>
-            <div class="filter-actions">
-              <a href="/expenses" class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-counterclockwise me-1"></i>重置
-              </a>
-            </div>
-          </form>
+          </div>
         </div>
-      </div>
+
+        <!-- 总支出（当前筛选结果） -->
+        <div class="card stat-card mb-3">
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="stat-icon icon-gold"><i class="bi bi-cash-stack"></i></div>
+            <div>
+              <div class="stat-label">总支出{% if filtered %}（当前筛选）{% endif %}</div>
+              <div class="stat-value">¥ {{ '%.2f'|format(total) }}</div>
+            </div>
+          </div>
+        </div>
+
+      </form>
 
       <!-- 账单表格 -->
       <div class="card">
@@ -131,6 +186,19 @@
 <script>
 'use strict';
 let deleteId = null;
+
+// 切换年份：选「全部年份」时清空并禁用月份
+function onPeriodChange() {
+  const form = document.getElementById('exp-filter-form');
+  const monthSel = form.querySelector('[name=month]');
+  if (form.querySelector('[name=year]').value === '') {
+    monthSel.value = '';
+    monthSel.disabled = true;
+  } else {
+    monthSel.disabled = false;
+  }
+  form.submit();
+}
 
 function askDelete(id, dateStr) {
   deleteId = id;

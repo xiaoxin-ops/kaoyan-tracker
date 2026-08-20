@@ -7,5 +7,10 @@
     <a class="nav-item" href="/#diary" data-view="diary"><i class="bi bi-journal-bookmark"></i></a>
     <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i></a>
     <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span></a>
+    {% if session.get('logged_in') %}
+    <form method="post" action="/logout" class="d-inline">
+      <button type="submit" class="nav-item" title="退出登录"><i class="bi bi-box-arrow-left"></i></button>
+    </form>
+    {% endif %}
   </div>
 </nav>

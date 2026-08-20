@@ -13,7 +13,10 @@ services:
     autoDeploy: true           # GitHub 有 push 时自动部署
     envVars:
       - key: SECRET_KEY
-        generateValue: true    # Render 自动生成随机密钥
+        generateValue: true    # Render 自动生成随机密钥（会话签名必需）
+      - key: SITE_PASSWORD
+        sync: false            # 在 Dashboard 手动填写你的访问密码后不会被覆盖
+        value: ""
       - key: DATABASE_PATH
         value: instance/data.db
         # 提示：免费实例的文件系统在重新部署时会被重置（数据丢失）。
