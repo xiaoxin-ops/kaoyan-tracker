@@ -23,7 +23,8 @@ import sys
 import time
 from datetime import date, datetime, timedelta
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, session, url_for)
 from flask_login import (LoginManager, current_user, login_required,
                          login_user, logout_user)
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -320,6 +321,168 @@ def logout():
     logout_user()
     session.clear()
     return redirect(url_for('login'))
+
+
+# ---------------------------------------------------------------- 个人中心 / 数据备份
+
+@app.get('/profile')
+@login_required
+def profile_page():
+    return render_template(
+        'profile.html',
+        imported=request.args.get('imported'),
+        error=request.args.get('error'),
+    )
+
+
+@app.get('/export')
+@login_required
+def export_data():
+    """导出当前用户的全部数据为 JSON 备份文件"""
+    uid = current_user.id
+    payload = {
+        'app': 'yantu-tracker',
+        'version': 1,
+        'exported_at': datetime.now().isoformat(timespec='seconds'),
+        'username': current_user.username,
+        'subjects': [
+            {'name': s.name, 'sort_order': s.sort_order}
+            for s in Subject.query.filter_by(user_id=uid)
+            .order_by(Subject.sort_order, Subject.id).all()
+        ],
+        'records': [
+            {
+                'date': r.study_date.isoformat(),
+                'subject': r.subject.name if r.subject else '',
+                'minutes': r.minutes,
+                'summary': r.summary,
+                'mastery': r.mastery,
+            }
+            for r in Record.query.filter_by(user_id=uid)
+            .order_by(Record.study_date, Record.id).all()
+        ],
+        'diaries': [
+            {'date': d.entry_date.isoformat(), 'title': d.title,
+             'content': d.content, 'mood': d.mood}
+            for d in Diary.query.filter_by(user_id=uid)
+            .order_by(Diary.entry_date).all()
+        ],
+        'expenses': [
+            {'date': e.date.isoformat(), 'amount': e.amount,
+             'category': e.category, 'description': e.description}
+            for e in Expense.query.filter_by(user_id=uid)
+            .order_by(Expense.date, Expense.id).all()
+        ],
+    }
+    resp = Response(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        mimetype='application/json; charset=utf-8',
+    )
+    resp.headers['Content-Disposition'] = \
+        f"attachment; filename=yantu-backup-{date.today().isoformat()}.json"
+    return resp
+
+
+@app.post('/import')
+@login_required
+def import_data():
+    """从 JSON 备份文件恢复数据（覆盖当前用户现有数据）"""
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return redirect(url_for('profile_page', error='请选择要导入的备份文件'))
+
+    raw = file.read()
+    if len(raw) > 10 * 1024 * 1024:
+        return redirect(url_for('profile_page', error='文件过大（超过 10MB）'))
+
+    try:
+        payload = json.loads(raw.decode('utf-8-sig'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return redirect(url_for('profile_page', error='文件不是有效的 JSON 备份'))
+
+    if not isinstance(payload, dict) or payload.get('app') != 'yantu-tracker':
+        return redirect(url_for('profile_page', error='这不是研途追踪的备份文件'))
+
+    for key in ('subjects', 'records', 'diaries', 'expenses'):
+        if not isinstance(payload.get(key), list):
+            return redirect(url_for('profile_page', error=f'备份文件缺少 {key} 数据列表'))
+
+    uid = current_user.id
+    try:
+        # 1. 清空当前用户现有数据（先删记录再删科目，避免孤儿数据）
+        Record.query.filter_by(user_id=uid).delete()
+        Subject.query.filter_by(user_id=uid).delete()
+        Diary.query.filter_by(user_id=uid).delete()
+        Expense.query.filter_by(user_id=uid).delete()
+        db.session.flush()
+
+        # 2. 恢复科目（记录按科目名重新映射 id）
+        name_to_id = {}
+        for s in payload['subjects']:
+            name = str(s.get('name') or '').strip()[:50]
+            if not name:
+                continue
+            order = s.get('sort_order')
+            order = int(order) if isinstance(order, int) else 0
+            subject = Subject(user_id=uid, name=name, sort_order=order)
+            db.session.add(subject)
+            db.session.flush()
+            name_to_id[name] = subject.id
+
+        # 3. 恢复学习记录
+        for r in payload['records']:
+            d, err = parse_date(r.get('date'))
+            if err or not isinstance(r.get('minutes'), int) or r['minutes'] <= 0:
+                continue
+            subject_name = str(r.get('subject') or '').strip()
+            if subject_name not in name_to_id:
+                continue
+            mastery = r.get('mastery')
+            mastery = int(mastery) if isinstance(mastery, (int, float)) else 0
+            mastery = max(0, min(100, mastery))
+            db.session.add(Record(
+                user_id=uid, study_date=d, subject_id=name_to_id[subject_name],
+                minutes=r['minutes'], summary=str(r.get('summary') or ''),
+                mastery=mastery,
+            ))
+
+        # 4. 恢复日记
+        for di in payload['diaries']:
+            d, err = parse_date(di.get('date'))
+            if err:
+                continue
+            content = str(di.get('content') or '').strip()
+            if not content:
+                continue
+            db.session.add(Diary(
+                user_id=uid, entry_date=d,
+                title=str(di.get('title') or '')[:100],
+                content=content, mood=str(di.get('mood') or '')[:20],
+            ))
+
+        # 5. 恢复账单
+        for e in payload['expenses']:
+            d, err = parse_date(e.get('date'))
+            if err:
+                continue
+            amount = e.get('amount')
+            amount = float(amount) if isinstance(amount, (int, float)) else 0.0
+            if amount <= 0:
+                continue
+            category = str(e.get('category') or '').strip()
+            if category not in EXPENSE_CATEGORIES:
+                category = '其他'
+            db.session.add(Expense(
+                user_id=uid, amount=round(amount, 2), category=category,
+                date=d, description=str(e.get('description') or '')[:200],
+            ))
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return redirect(url_for('profile_page', error='导入失败，请检查备份文件内容'))
+
+    return redirect(url_for('profile_page', imported='ok'))
 
 
 # ---------------------------------------------------------------- 页面

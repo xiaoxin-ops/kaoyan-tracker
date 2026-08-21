@@ -120,6 +120,8 @@ a.nav-item{text-decoration:none}
 .form-range::-moz-range-thumb{background:var(--sage-deep)}
 .hint{color:var(--muted)}
 .alert-danger.alert-soft{background:#F6E7E4;border-color:#E7CBC7;color:#A06F6A;border-radius:10px}
+.alert-success.alert-soft{background:#E9EEE0;border-color:#D7E2CB;color:#55663F;border-radius:10px}
+.alert-soft-warn{background:#F7F1DF;border-color:#E8DDBA;color:#8A7A45;border-radius:10px}
 /* ============ 图表 ============ */
 .chart-box{position:relative;height:300px}
 /* ============ 弹窗 ============ */

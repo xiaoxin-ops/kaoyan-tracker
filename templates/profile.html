@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>个人中心 · 研途追踪</title>
+<meta name="theme-color" content="#A3B18A">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+
+  {% include '_sidebar.html' %}
+
+  <div class="main">
+    {% include '_nav_mobile.html' %}
+
+    <main class="content">
+      <div class="page-head">
+        <div>
+          <h4 class="page-title">👤 个人中心</h4>
+          <div class="page-sub">账户信息与数据备份</div>
+        </div>
+      </div>
+
+      {% if imported == 'ok' %}
+      <div class="alert alert-success alert-soft py-2 small">✅ 数据导入成功，备份内容已恢复</div>
+      {% endif %}
+      {% if error %}
+      <div class="alert alert-danger alert-soft py-2 small">⚠️ {{ error }}</div>
+      {% endif %}
+
+      <div class="row g-3">
+        <!-- 账户信息 -->
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-head">账户信息</div>
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <span class="brand-mark login-mark" style="width:52px;height:52px">研</span>
+                <div>
+                  <div class="fw-bold">{{ current_user.username }}</div>
+                  <div class="text-muted small">{{ current_user.email or '未填写邮箱' }}</div>
+                </div>
+              </div>
+              <ul class="list-unstyled small text-muted mb-0">
+                <li class="mb-1"><i class="bi bi-hash me-2"></i>用户 ID：{{ current_user.id }}</li>
+                <li class="mb-1"><i class="bi bi-calendar3 me-2"></i>注册时间：
+                  {% if current_user.created_at %}{{ current_user.created_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+                </li>
+                <li><i class="bi bi-journal-check me-2"></i>数据完全独立，仅自己可见</li>
+              </ul>
+              <form method="post" action="/logout" class="mt-3">
+                <button type="submit" class="btn btn-outline-danger w-100">
+                  <i class="bi bi-box-arrow-left me-1"></i>退出登录
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据备份 -->
+        <div class="col-lg-8">
+          <div class="card mb-3">
+            <div class="card-head">💾 数据备份</div>
+            <div class="card-body">
+              <div class="alert alert-soft-warn py-2 small mb-3">
+                <i class="bi bi-info-circle me-1"></i>
+                免费版 Render 的磁盘是临时的：<b>重新部署或实例休眠时数据会被清空</b>。
+                建议养成习惯：更新代码前先导出备份；发现数据丢失后在这里一键导入恢复。
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="card h-100" style="background:#E9EEE0;border-color:#D7E2CB">
+                    <div class="card-body">
+                      <div class="fw-medium mb-1"><i class="bi bi-download me-2"></i>导出全部数据</div>
+                      <div class="text-muted small mb-3">
+                        下载一个 JSON 备份文件，包含科目、学习记录、日记、账单。
+                      </div>
+                      <a href="/export" class="btn btn-primary btn-soft btn-sm w-100">📥 下载备份</a>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card h-100" style="background:#E8EEF2;border-color:#D3E0E9">
+                    <div class="card-body">
+                      <div class="fw-medium mb-1"><i class="bi bi-upload me-2"></i>导入备份恢复</div>
+                      <div class="text-muted small mb-3">
+                        选择之前导出的备份文件恢复数据（<b>会覆盖当前数据</b>）。
+                      </div>
+                      <form method="post" action="/import" enctype="multipart/form-data"
+                            onsubmit="return confirm('导入将覆盖当前所有数据，确定继续吗？')">
+                        <div class="d-flex gap-2">
+                          <input type="file" name="file" accept=".json,application/json" class="form-control form-control-sm" required>
+                          <button type="submit" class="btn btn-outline-secondary btn-sm text-nowrap flex-shrink-0">导入</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">💡 使用建议</div>
+            <div class="card-body small text-muted">
+              <ul class="mb-0">
+                <li class="mb-1">每次 <code>git push</code> 更新代码前，先「下载备份」存到本地（手机/电脑都行）；</li>
+                <li class="mb-1">部署完成后如果发现数据被清空，回到这里「导入备份」即可完整恢复；</li>
+                <li>备份文件是纯文本 JSON，任何设备都能保存，请妥善保管（里面是私人数据）。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
