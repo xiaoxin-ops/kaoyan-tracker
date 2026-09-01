@@ -541,6 +541,15 @@ def healthz():
     return jsonify({'status': 'ok'})
 
 
+@app.get('/sw.js')
+def service_worker():
+    """以根路径提供 Service Worker（scope 覆盖全站），并禁止缓存"""
+    resp = app.send_static_file('sw.js')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
 @app.get('/')
 @login_required
 def index():

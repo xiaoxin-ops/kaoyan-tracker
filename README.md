@@ -26,6 +26,16 @@ python app.py                     # 默认 http://127.0.0.1:5000，局域网也�
 | `SECRET_KEY` | 会话签名密钥（重部署后保持登录态的关键） | 自动生成并持久化在 `instance/.secret_key` | Blueprint 自动生成；手动创建时请自行添加 |
 | `DATABASE_PATH` | 数据库位置 | 默认 `instance/data.db` | 默认即可；挂持久磁盘时指向 `/var/data/data.db` |
 
+## PWA（手机安装为 App 入口）
+
+网站已 PWA 化：手机浏览器打开后「添加到主屏幕」即可像 App 一样全屏独立使用（图标、启动页、独立窗口）。
+
+- **Android**：Chrome/Edge → 菜单 → 添加到主屏幕（或安装应用）
+- **iOS**：Safari → 分享 → 添加到主屏幕
+- 图标与主题色为莫兰迪风格；静态资源离线缓存，断网时显示离线提示页
+- 注意：PWA 的数据仍保存在 Render 云端（离线不能记账）；若要数据真正存入手机，需要 Capacitor 混合 App 方案
+- 图标重新生成：`node tools/gen_icons.js`；Service Worker 缓存版本升级：修改 `static/sw.js` 中的 `CACHE` 名称
+
 ## 数据备份（免费版必备）
 
 Render 免费版文件系统是临时的：**重新部署、重启或闲置 15 分钟休眠都会清空 SQLite 数据**。免费版也无法挂载持久磁盘（磁盘仅付费实例可用）。应对方案：
