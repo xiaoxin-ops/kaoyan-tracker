@@ -33,6 +33,7 @@ class User(UserMixin, db.Model):
     records = db.relationship('Record', backref='user', lazy=True, cascade='all, delete-orphan')
     diaries = db.relationship('Diary', backref='user', lazy=True, cascade='all, delete-orphan')
     expenses = db.relationship('Expense', backref='user', lazy=True, cascade='all, delete-orphan')
+    categories = db.relationship('Category', backref='user', lazy=True, cascade='all, delete-orphan')
 
 
 class Subject(db.Model):
@@ -117,23 +118,51 @@ class Diary(db.Model):
         }
 
 
-class Expense(db.Model):
-    """支出表：考研花销记账"""
-    __tablename__ = 'expenses'
+class Category(db.Model):
+    """收支类别表（每个用户自定义，注册时自动预置默认类别）"""
+    __tablename__ = 'categories'
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'name', 'type', name='uq_user_category_name_type'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True, comment='所属用户')
-    amount = db.Column(db.Float, nullable=False, comment='金额（元）')
-    category = db.Column(db.String(50), nullable=False, index=True, comment='支出类别')
-    description = db.Column(db.String(200), nullable=False, default='', comment='备注 / 用途描述')
-    date = db.Column(db.Date, nullable=False, index=True, comment='支出日期')
+    name = db.Column(db.String(50), nullable=False, comment='类别名称')
+    type = db.Column(db.String(10), nullable=False, index=True, comment='income（收入） / expense（支出）')
+    is_default = db.Column(db.Boolean, nullable=False, default=False, comment='系统预置类别')
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'amount': self.amount,
-            'category': self.category,
-            'description': self.description,
+            'name': self.name,
+            'type': self.type,
+            'is_default': self.is_default,
+        }
+
+
+class Expense(db.Model):
+    """收支记录表：收入与支出双向记账"""
+    __tablename__ = 'expenses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True, comment='所属用户')
+    transaction_type = db.Column(db.String(10), nullable=False, index=True, comment='income / expense')
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False, index=True, comment='类别ID')
+    amount = db.Column(db.Float, nullable=False, comment='金额（元）')
+    description = db.Column(db.String(200), nullable=False, default='', comment='备注 / 用途描述')
+    date = db.Column(db.Date, nullable=False, index=True, comment='收支日期')
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    category = db.relationship('Category', backref='expenses', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
             'date': self.date.isoformat(),
+            'transaction_type': self.transaction_type,
+            'category_id': self.category_id,
+            'category': self.category.name if self.category else '',
+            'amount': self.amount,
+            'description': self.description,
         }

@@ -152,6 +152,13 @@ a.nav-item{text-decoration:none}
 .period-card .card-body{padding:20px}
 .period-blue{background:#E8EEF2;border-color:#D3E0E9}
 .period-green{background:#E9EEE0;border-color:#D7E2CB}
+.period-red{background:#F5E9E6;border-color:#E7D2CE}
+.period-net{background:#EFEBE1;border-color:#E2DCCB}
+.badge-income{background:#E9EEE0;color:#55663F;font-weight:500;padding:.4em .7em;border-radius:8px}
+.badge-expense{background:#F6E7E4;color:#A06F6A;font-weight:500;padding:.4em .7em;border-radius:8px}
+.text-income{color:#5F7A4A;font-weight:600}
+.text-expense{color:#B06A64;font-weight:600}
+.cat-card{background:#F7F4EC;border:1px solid var(--border);border-radius:12px;padding:14px}
 .exp-mini{display:flex;gap:6px;align-items:flex-end;height:110px}
 .exp-mini-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
 .exp-mini-bar-box{width:100%;height:64px;display:flex;align-items:flex-end;justify-content:center}

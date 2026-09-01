@@ -55,7 +55,7 @@ def load_dotenv(path):
 # 本地开发环境变量（DATABASE_PATH 等）来自项目根下的 .env 文件
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from models import Subject, Record, Diary, Expense, User, db
+from models import Subject, Record, Diary, Expense, Category, User, db
 from sqlalchemy import extract
 from sqlalchemy.exc import IntegrityError
 
@@ -121,7 +121,8 @@ def check_session_revoked():
 
 DEFAULT_SUBJECTS = ['政治', '英语', '数学', '专业课']
 WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
-EXPENSE_CATEGORIES = ['餐饮', '资料费', '文具', '住宿', '交通', '娱乐', '其他']
+DEFAULT_EXPENSE_CATEGORIES = ['餐饮', '资料费', '文具', '住宿', '交通', '娱乐', '通讯', '其他支出']
+DEFAULT_INCOME_CATEGORIES = ['生活费', '奖学金', '兼职', '红包', '其他收入']
 
 
 def init_db():
@@ -144,6 +145,14 @@ def create_default_subjects(user):
     """为新注册用户创建默认科目"""
     for i, name in enumerate(DEFAULT_SUBJECTS):
         db.session.add(Subject(user_id=user.id, name=name, sort_order=i))
+
+
+def create_default_categories(user):
+    """为新注册用户创建默认收支类别"""
+    for name in DEFAULT_EXPENSE_CATEGORIES:
+        db.session.add(Category(user_id=user.id, name=name, type='expense', is_default=True))
+    for name in DEFAULT_INCOME_CATEGORIES:
+        db.session.add(Category(user_id=user.id, name=name, type='income', is_default=True))
 
 
 with app.app_context():
@@ -283,6 +292,7 @@ def register():
             db.session.add(user)
             db.session.flush()           # 先拿到 user.id
             create_default_subjects(user)
+            create_default_categories(user)
             db.session.commit()
             login_user(user, remember=False)
             session['login_at'] = time.time()
@@ -367,9 +377,16 @@ def export_data():
             for d in Diary.query.filter_by(user_id=uid)
             .order_by(Diary.entry_date).all()
         ],
+        'categories': [
+            {'name': c.name, 'type': c.type}
+            for c in Category.query.filter_by(user_id=uid)
+            .order_by(Category.type, Category.id).all()
+        ],
         'expenses': [
             {'date': e.date.isoformat(), 'amount': e.amount,
-             'category': e.category, 'description': e.description}
+             'transaction_type': e.transaction_type,
+             'category': e.category.name if e.category else '',
+             'description': e.description}
             for e in Expense.query.filter_by(user_id=uid)
             .order_by(Expense.date, Expense.id).all()
         ],
@@ -409,11 +426,12 @@ def import_data():
 
     uid = current_user.id
     try:
-        # 1. 清空当前用户现有数据（先删记录再删科目，避免孤儿数据）
+        # 1. 清空当前用户现有数据（先删记录再删科目/类别，避免孤儿数据）
         Record.query.filter_by(user_id=uid).delete()
         Subject.query.filter_by(user_id=uid).delete()
         Diary.query.filter_by(user_id=uid).delete()
         Expense.query.filter_by(user_id=uid).delete()
+        Category.query.filter_by(user_id=uid).delete()
         db.session.flush()
 
         # 2. 恢复科目（记录按科目名重新映射 id）
@@ -460,7 +478,32 @@ def import_data():
                 content=content, mood=str(di.get('mood') or '')[:20],
             ))
 
-        # 5. 恢复账单
+        # 5. 恢复收支类别（(type, name) → id 映射；兼容旧版备份：
+        #    无 categories 列表时按账单里的类别名自动创建支出类型类别）
+        cat_map = {}
+        cats = payload.get('categories')
+        if isinstance(cats, list) and cats:
+            for c in cats:
+                name = str(c.get('name') or '').strip()[:50]
+                ctype = str(c.get('type') or '').strip()
+                if not name or ctype not in ('income', 'expense'):
+                    continue
+                if (ctype, name) in cat_map:
+                    continue
+                cat = Category(user_id=uid, name=name, type=ctype)
+                db.session.add(cat)
+                db.session.flush()
+                cat_map[(ctype, name)] = cat.id
+        else:
+            for e in payload['expenses']:
+                name = str(e.get('category') or '').strip()[:50]
+                if name and ('expense', name) not in cat_map:
+                    cat = Category(user_id=uid, name=name, type='expense')
+                    db.session.add(cat)
+                    db.session.flush()
+                    cat_map[('expense', name)] = cat.id
+
+        # 6. 恢复账单
         for e in payload['expenses']:
             d, err = parse_date(e.get('date'))
             if err:
@@ -469,12 +512,17 @@ def import_data():
             amount = float(amount) if isinstance(amount, (int, float)) else 0.0
             if amount <= 0:
                 continue
-            category = str(e.get('category') or '').strip()
-            if category not in EXPENSE_CATEGORIES:
-                category = '其他'
+            ctype = str(e.get('transaction_type') or 'expense').strip()
+            if ctype not in ('income', 'expense'):
+                ctype = 'expense'
+            cat_name = str(e.get('category') or '').strip()
+            cat_id = cat_map.get((ctype, cat_name))
+            if cat_id is None:
+                continue
             db.session.add(Expense(
-                user_id=uid, amount=round(amount, 2), category=category,
-                date=d, description=str(e.get('description') or '')[:200],
+                user_id=uid, transaction_type=ctype, category_id=cat_id,
+                amount=round(amount, 2), date=d,
+                description=str(e.get('description') or '')[:200],
             ))
 
         db.session.commit()
@@ -549,17 +597,26 @@ def api_dashboard():
             'mastery': last.mastery if last else 0,
         })
 
-    # 近 7 天花费（记账模块）
+    # 近 7 天收支（记账模块）
     expense_days = []
     expense_total = 0.0
+    income_total7 = 0.0
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
         amt = float(
             db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0))
-            .filter(Expense.user_id == uid, Expense.date == d)
+            .filter(Expense.user_id == uid, Expense.date == d,
+                    Expense.transaction_type == 'expense')
+            .scalar()
+        )
+        inc = float(
+            db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0.0))
+            .filter(Expense.user_id == uid, Expense.date == d,
+                    Expense.transaction_type == 'income')
             .scalar()
         )
         expense_total += amt
+        income_total7 += inc
         expense_days.append({
             'date': d.isoformat(),
             'label': f"{d.month}/{d.day}",
@@ -586,6 +643,7 @@ def api_dashboard():
         'expense_count': expense_count,
         'expense7': {
             'total': round(expense_total, 2),
+            'income_total': round(income_total7, 2),
             'days': expense_days,
         },
         'trend': trend,
@@ -785,17 +843,120 @@ def api_delete_diary(did):
     return jsonify({'ok': True})
 
 
-# ---------------------------------------------------------------- 记账
+# ---------------------------------------------------------------- 类别管理
+
+@app.get('/categories')
+@login_required
+def categories_page():
+    uid = current_user.id
+    income_cats = Category.query.filter_by(user_id=uid, type='income') \
+        .order_by(Category.is_default.desc(), Category.id).all()
+    expense_cats = Category.query.filter_by(user_id=uid, type='expense') \
+        .order_by(Category.is_default.desc(), Category.id).all()
+    return render_template(
+        'categories.html',
+        income_cats=income_cats,
+        expense_cats=expense_cats,
+        added=request.args.get('added'),
+        error=request.args.get('error'),
+    )
+
+
+@app.post('/category/add')
+@login_required
+def category_add():
+    name = str(request.form.get('name') or '').strip()
+    ctype = str(request.form.get('type') or '').strip()
+    if not name or len(name) > 50:
+        return redirect(url_for('categories_page', error='类别名称需为 1-50 个字符'))
+    if ctype not in ('income', 'expense'):
+        return redirect(url_for('categories_page', error='请选择有效的收支类型'))
+    if Category.query.filter_by(user_id=current_user.id, name=name, type=ctype).first():
+        return redirect(url_for('categories_page', error=f'类别「{name}」已存在'))
+    db.session.add(Category(user_id=current_user.id, name=name, type=ctype))
+    db.session.commit()
+    return redirect(url_for('categories_page', added=f'「{name}」'))
+
+
+@app.post('/category/edit/<int:cid>')
+@login_required
+def category_edit(cid):
+    cat = db.session.get(Category, cid)
+    if cat is None or cat.user_id != current_user.id:
+        return redirect(url_for('categories_page', error='类别不存在'))
+    name = str(request.form.get('name') or '').strip()
+    if not name or len(name) > 50:
+        return redirect(url_for('categories_page', error='类别名称需为 1-50 个字符'))
+    dup = Category.query.filter(
+        Category.user_id == current_user.id,
+        Category.name == name,
+        Category.type == cat.type,
+        Category.id != cid,
+    ).first()
+    if dup:
+        return redirect(url_for('categories_page', error=f'类别「{name}」已存在'))
+    cat.name = name
+    db.session.commit()
+    return redirect(url_for('categories_page', added=f'「{name}」（已更新）'))
+
+
+@app.post('/category/delete/<int:cid>')
+@login_required
+def category_delete(cid):
+    cat = db.session.get(Category, cid)
+    if cat is None or cat.user_id != current_user.id:
+        return redirect(url_for('categories_page', error='类别不存在'))
+    used = Expense.query.filter_by(user_id=current_user.id, category_id=cid).count()
+    if used:
+        return redirect(url_for(
+            'categories_page',
+            error=f'「{cat.name}」下已有 {used} 笔账单，请先删除或改用其他类别再删除',
+        ))
+    name = cat.name
+    db.session.delete(cat)
+    db.session.commit()
+    return redirect(url_for('categories_page', added=f'已删除「{name}」'))
+
+
+# ---------------------------------------------------------------- 收支记账
+
+def _user_categories(uid):
+    """当前用户全部类别（供表单动态加载与筛选下拉）"""
+    return [
+        {'id': c.id, 'name': c.name, 'type': c.type}
+        for c in Category.query.filter_by(user_id=uid)
+        .order_by(Category.is_default.desc(), Category.id).all()
+    ]
+
+
+def _expense_form_context(error, form, mode='add', expense=None):
+    return dict(
+        mode=mode,
+        expense=expense,
+        form=form,
+        error=error,
+        today=date.today().isoformat(),
+        categories_json=json.dumps(_user_categories(current_user.id), ensure_ascii=False),
+    )
+
+
+def _period_filters(uid, year, month):
+    """按所选年/月构造统计过滤条件"""
+    filters = [Expense.user_id == uid]
+    if year is not None:
+        filters.append(extract('year', Expense.date) == year)
+        if month is not None:
+            filters.append(extract('month', Expense.date) == month)
+    return filters
+
 
 @app.get('/expenses')
 @login_required
 def expenses_page():
     uid = current_user.id
-    query = Expense.query.filter_by(user_id=uid)
-
-    category = (request.args.get('category') or '').strip()
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
+    category_id_raw = (request.args.get('category_id') or '').strip()
 
     # ---------- 年 / 月周期参数（首次进入默认当前年 + 当前月） ----------
     today = date.today()
@@ -815,7 +976,25 @@ def expenses_page():
         year = None if year == 'all' else year
         month = None if month == 'all' else month
 
-    # 列表按所选周期过滤（选月份 → 该月；只选年份 → 该年；全部 → 不过滤）
+    if year is not None and month is not None:
+        period_label = f'{year} 年 {month} 月'
+    elif year is not None:
+        period_label = f'{year} 年全年'
+    else:
+        period_label = '全部时间'
+
+    # ---------- 统计：总收入 / 总支出 / 净结余（按所选周期，extract + func.sum） ----------
+    base_filters = _period_filters(uid, year, month)
+    income_total = round(float(db.session.query(
+        db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+    ).filter(*base_filters, Expense.transaction_type == 'income').scalar()), 2)
+    expense_total = round(float(db.session.query(
+        db.func.coalesce(db.func.sum(Expense.amount), 0.0)
+    ).filter(*base_filters, Expense.transaction_type == 'expense').scalar()), 2)
+    net_total = round(income_total - expense_total, 2)
+
+    # ---------- 列表过滤（周期 / 类别 / 日期范围） ----------
+    query = Expense.query.filter_by(user_id=uid)
     if year is not None:
         if month is not None:
             period_start = date(year, month, 1)
@@ -825,51 +1004,15 @@ def expenses_page():
             period_end = date(year + 1, 1, 1)
         query = query.filter(Expense.date >= period_start, Expense.date < period_end)
 
-    # 年份下拉范围：该用户最早记录年份 → 当前年份（无记录时只有当前年份）
-    earliest = db.session.query(db.func.min(Expense.date)) \
-        .filter(Expense.user_id == uid).scalar()
-    min_year = earliest.year if earliest else current_year
-    years = list(range(current_year, min_year - 1, -1))
+    category_id = None
+    if category_id_raw:
+        try:
+            category_id = int(category_id_raw)
+        except ValueError:
+            return error('类别参数不正确')
+        query = query.filter(Expense.category_id == category_id)
 
-    # ---------- 聚合统计（extract + func.sum，按用户隔离） ----------
-    # 年度统计
-    if year is not None:
-        year_total = float(db.session.query(
-            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(Expense.user_id == uid, extract('year', Expense.date) == year).scalar())
-        year_label = f'{year} 年'
-    else:
-        year_total = float(db.session.query(
-            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(Expense.user_id == uid).scalar())
-        year_label = '全部年份'
-
-    # 月度统计
-    if year is not None and month is not None:
-        month_total = float(db.session.query(
-            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(Expense.user_id == uid,
-                 extract('year', Expense.date) == year,
-                 extract('month', Expense.date) == month).scalar())
-        month_label = f'{year} 年 {month} 月'
-    elif year is not None:
-        month_total = year_total
-        month_label = f'{year} 年全年'
-    else:
-        month_total = float(db.session.query(
-            db.func.coalesce(db.func.sum(Expense.amount), 0.0)
-        ).filter(Expense.user_id == uid,
-                 extract('year', Expense.date) == current_year,
-                 extract('month', Expense.date) == current_month).scalar())
-        month_label = f'本月（{current_year} 年 {current_month} 月）'
-
-    # ---------- 原有筛选（类别 / 日期范围） ----------
-    filtered = False
-    if category:
-        if category not in EXPENSE_CATEGORIES:
-            return error('类别不正确')
-        query = query.filter(Expense.category == category)
-        filtered = True
+    filtered = bool(category_id_raw)
     if start:
         d, err = parse_date(start)
         if err:
@@ -882,25 +1025,28 @@ def expenses_page():
             return error(err)
         query = query.filter(Expense.date <= d)
         filtered = True
-    # 周期偏离默认值也算“筛选”
     if not (year == current_year and month == current_month):
         filtered = True
 
+    # 年份下拉范围：该用户最早记录年份 → 当前年份
+    earliest = db.session.query(db.func.min(Expense.date)) \
+        .filter(Expense.user_id == uid).scalar()
+    min_year = earliest.year if earliest else current_year
+    years = list(range(current_year, min_year - 1, -1))
+
     expenses = query.order_by(Expense.date.desc(), Expense.id.desc()).all()
-    total = round(float(sum(e.amount for e in expenses)), 2)
     return render_template(
         'expenses.html',
         expenses=expenses,
-        total=total,
-        categories=EXPENSE_CATEGORIES,
-        category=category,
+        categories=_user_categories(uid),
+        category_id=category_id,
         start=start,
         end=end,
         filtered=filtered,
-        month_total=round(month_total, 2),
-        month_label=month_label,
-        year_total=round(year_total, 2),
-        year_label=year_label,
+        income_total=income_total,
+        expense_total=expense_total,
+        net_total=net_total,
+        period_label=period_label,
         year=year,
         month=month,
         years=years,
@@ -910,45 +1056,87 @@ def expenses_page():
 @app.get('/expense/add')
 @login_required
 def expense_add_page():
-    return render_template(
-        'expense_add.html',
-        categories=EXPENSE_CATEGORIES,
-        form={},
-        error=None,
-        today=date.today().isoformat(),
-    )
+    return render_template('expense_form.html', **_expense_form_context(None, {}))
 
 
 @app.post('/expense/add')
 @login_required
 def expense_add_submit():
+    return _expense_form_submit(None)
+
+
+@app.get('/expense/edit/<int:eid>')
+@login_required
+def expense_edit_page(eid):
+    exp = db.session.get(Expense, eid)
+    if exp is None or exp.user_id != current_user.id:
+        return redirect(url_for('expenses_page'))
+    form = {
+        'type': exp.transaction_type,
+        'category_id': str(exp.category_id),
+        'amount': f'{exp.amount:g}',
+        'date': exp.date.isoformat(),
+        'description': exp.description,
+    }
+    return render_template(
+        'expense_form.html',
+        **_expense_form_context(None, form, mode='edit', expense=exp),
+    )
+
+
+@app.post('/expense/edit/<int:eid>')
+@login_required
+def expense_edit_submit(eid):
+    return _expense_form_submit(eid)
+
+
+def _expense_form_submit(eid):
+    """添加 / 编辑账单的共用提交逻辑"""
     form = request.form
+    mode = 'edit' if eid else 'add'
+    expense = db.session.get(Expense, eid) if eid else None
+    if eid and (expense is None or expense.user_id != current_user.id):
+        return redirect(url_for('expenses_page'))
+    ctx = dict(mode=mode, expense=expense)
+
+    ctype = str(form.get('type') or '').strip()
+    if ctype not in ('income', 'expense'):
+        return render_template('expense_form.html',
+                               **_expense_form_context('请选择收支类型', form, **ctx))
+
+    try:
+        category_id = int(form.get('category_id') or 0)
+    except (TypeError, ValueError):
+        category_id = 0
+    category = db.session.get(Category, category_id)
+    if category is None or category.user_id != current_user.id or category.type != ctype:
+        return render_template('expense_form.html',
+                               **_expense_form_context('请选择有效的类别', form, **ctx))
 
     try:
         amount = float(str(form.get('amount') or '').strip())
     except (TypeError, ValueError):
         amount = 0.0
     if amount <= 0:
-        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
-                               form=form, error='金额必须是大于 0 的数字', today=date.today().isoformat())
+        return render_template('expense_form.html',
+                               **_expense_form_context('金额必须是大于 0 的数字', form, **ctx))
     if amount > 1000000:
-        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
-                               form=form, error='金额过大', today=date.today().isoformat())
-
-    category = str(form.get('category') or '').strip()
-    if category not in EXPENSE_CATEGORIES:
-        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
-                               form=form, error='请选择有效的支出类别', today=date.today().isoformat())
+        return render_template('expense_form.html',
+                               **_expense_form_context('金额过大', form, **ctx))
 
     d, err = parse_date(form.get('date'))
     if err:
-        return render_template('expense_add.html', categories=EXPENSE_CATEGORIES,
-                               form=form, error=err, today=date.today().isoformat())
+        return render_template('expense_form.html', **_expense_form_context(err, form, **ctx))
 
     description = str(form.get('description') or '').strip()[:200]
-    expense = Expense(user_id=current_user.id, amount=round(amount, 2),
-                      category=category, date=d, description=description)
-    db.session.add(expense)
+    if expense is None:
+        expense = Expense(user_id=current_user.id)
+        db.session.add(expense)
+    expense.transaction_type = ctype
+    expense.category_id = category.id
+    expense.amount = round(amount, 2)
+    expense.date = d
+    expense.description = description
     db.session.commit()
     return redirect('/expenses')
 

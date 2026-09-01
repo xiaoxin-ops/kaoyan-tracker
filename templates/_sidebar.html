@@ -13,6 +13,7 @@
     <a class="nav-item" href="/#diary" data-view="diary"><i class="bi bi-journal-bookmark"></i><span>学习日记</span></a>
     <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i><span>科目管理</span></a>
     <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span><span>账单</span></a>
+    <a class="nav-item{% if active_page == 'categories' %} active{% endif %}" href="/categories"><span class="nav-emoji">📂</span><span>类别管理</span></a>
   </nav>
   {% if current_user.is_authenticated %}
   <div class="dropdown mt-2">

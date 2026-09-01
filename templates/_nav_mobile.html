@@ -7,6 +7,7 @@
     <a class="nav-item" href="/#diary" data-view="diary"><i class="bi bi-journal-bookmark"></i></a>
     <a class="nav-item" href="/#subjects" data-view="subjects"><i class="bi bi-collection"></i></a>
     <a class="nav-item{% if active_page == 'expenses' %} active{% endif %}" href="/expenses"><span class="nav-emoji">📒</span></a>
+    <a class="nav-item{% if active_page == 'categories' %} active{% endif %}" href="/categories"><span class="nav-emoji">📂</span></a>
     {% if current_user.is_authenticated %}
     <div class="dropdown">
       <button type="button" class="nav-item dropdown-toggle" data-bs-toggle="dropdown" title="{{ current_user.username }}" aria-expanded="false">
